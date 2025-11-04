@@ -28,10 +28,20 @@ const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-me';
 authRouter.use(express.json());
 authRouter.use(express.urlencoded({ extended: true }));
 authRouter.use(express.static(path.join(__dirname, 'public')));
+
+// Middleware to set baseUrl dynamically from request
+authRouter.use((req, res, next) => {
+  const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  const host = req.headers['x-forwarded-host'] || req.headers.host || 'localhost:3000';
+  req.baseUrl = `${protocol}://${host}`;
+  next();
+});
+
 // Allow proxy and frontend origins to call this server with credentials
 const allowedOrigins = [
   'http://localhost:3000', 
   'http://localhost:3001',
+  'http://localhost:3002',
   process.env.FRONTEND_URL,
   process.env.PROXY_URL
 ].filter(Boolean); // Remove undefined values
@@ -781,7 +791,8 @@ authRouter.get('/login', (req, res) => {
           setTimeout(() => {
             const params = new URLSearchParams(window.location.search);
             const redirect = params.get('redirect');
-            const defaultUrl = '${process.env.FRONTEND_URL || "http://localhost:3000"}/home';
+            const baseUrl = window.location.origin;
+            const defaultUrl = baseUrl + '/home';
             const targetUrl = redirect ? decodeURIComponent(redirect) : defaultUrl;
             window.location.href = targetUrl;
           }, 1000);
@@ -994,7 +1005,8 @@ authRouter.post('/api/submit-prompt', async (req, res) => {
   // Send request to proxy server - the proxy has the single browser instance
   try {
     const requestContext = await pwRequest.newContext();
-    const proxyResponse = await requestContext.post('http://localhost:3000/proxy/submit-prompt', {
+    const baseUrl = req.baseUrl || 'http://localhost:3000';
+    const proxyResponse = await requestContext.post(`${baseUrl}/proxy/submit-prompt`, {
       data: { prompt },
       headers: { 'Content-Type': 'application/json' }
     });

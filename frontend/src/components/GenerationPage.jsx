@@ -48,7 +48,10 @@ const GenerationPage = () => {
 
   // Connect to Playwright proxy WebSocket
   useEffect(() => {
-    const PROXY_WS_URL = process.env.REACT_APP_PROXY_WS_URL || 'ws://localhost:3000/proxy';
+    // Use dynamic URL based on current location
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const host = window.location.host;
+    const PROXY_WS_URL = process.env.REACT_APP_PROXY_WS_URL || `${protocol}//${host}/proxy`;
     const ws = new WebSocket(PROXY_WS_URL);
     wsRef.current = ws;
     
@@ -378,7 +381,8 @@ const GenerationPage = () => {
       } else {
         // No session yet, create a new one via backend
         console.log('Creating new session');
-        const response = await fetch('http://localhost:3000/auth/api/submit-prompt', {
+        const baseUrl = window.location.origin;
+        const response = await fetch(`${baseUrl}/auth/api/submit-prompt`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

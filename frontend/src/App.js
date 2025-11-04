@@ -11,7 +11,8 @@ function ProtectedRoute({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000/auth';
+        const baseUrl = window.location.origin;
+        const API_BASE = process.env.REACT_APP_API_BASE || `${baseUrl}/auth`;
         const res = await fetch(`${API_BASE}/api/status`, {
           method: 'GET',
           credentials: 'include',
@@ -35,7 +36,8 @@ function ProtectedRoute({ children }) {
         if (!cancelled) {
           console.error('❌ Auth check failed:', e.message);
           setAllowed(false);
-          const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000/auth';
+          const baseUrl = window.location.origin;
+          const API_BASE = process.env.REACT_APP_API_BASE || `${baseUrl}/auth`;
           const redirect = encodeURIComponent(window.location.origin + location.pathname + location.search);
           window.location.href = `${API_BASE}/login?redirect=${redirect}`;
         }

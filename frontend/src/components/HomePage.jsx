@@ -14,6 +14,9 @@ const HomePage = () => {
     setIsSubmitting(true);
     
     try {
+      const PROXY_HTTP_BASE = process.env.REACT_APP_PROXY_HTTP_BASE || 'http://localhost:3000';
+      const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3002';
+      
       // Upload files first if any
       if (attachedFiles.length > 0) {
         console.log('📤 Uploading files...');
@@ -22,7 +25,7 @@ const HomePage = () => {
           fileFormData.append(`file_${index}`, file);
         });
         
-        const uploadResponse = await fetch('http://localhost:3000/upload-files', {
+        const uploadResponse = await fetch(`${PROXY_HTTP_BASE}/upload-files`, {
           method: 'POST',
           body: fileFormData
         });
@@ -41,11 +44,12 @@ const HomePage = () => {
       }
       
       // Then submit the prompt
-      const response = await fetch('http://localhost:3002/api/submit-prompt', {
+      const response = await fetch(`${API_BASE}/api/submit-prompt`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
         body: JSON.stringify({ prompt: prompt.trim() })
       });
 

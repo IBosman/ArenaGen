@@ -46,27 +46,28 @@ const GenerationPage = () => {
 
   // Connect to Playwright proxy WebSocket
   useEffect(() => {
-    const ws = new WebSocket('ws://localhost:3000');
+    const PROXY_WS_URL = process.env.REACT_APP_PROXY_WS_URL || 'ws://localhost:3000';
+    const ws = new WebSocket(PROXY_WS_URL);
     wsRef.current = ws;
     
     // Expose debug function to window for console access
     window.debugDom = () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        console.log('📡 Sending debug_dom request...');
         wsRef.current.send(JSON.stringify({ action: 'debug_dom' }));
       } else {
         console.error('❌ WebSocket not connected');
       }
     };
-    
+
     window.getMessages = () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-        console.log('📡 Sending get_messages request...');
         wsRef.current.send(JSON.stringify({ action: 'get_messages' }));
       } else {
         console.error('❌ WebSocket not connected');
       }
     };
+
+    console.log('🔗 Connecting to WebSocket:', PROXY_WS_URL);
 
     ws.onopen = () => {
       console.log('✅ Connected to Playwright proxy');

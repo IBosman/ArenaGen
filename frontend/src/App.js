@@ -11,7 +11,8 @@ function ProtectedRoute({ children }) {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch('http://localhost:3002/api/status', {
+        const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3002';
+        const res = await fetch(`${API_BASE}/api/status`, {
           method: 'GET',
           credentials: 'include',
           headers: {
@@ -27,15 +28,16 @@ function ProtectedRoute({ children }) {
             console.log('❌ User not authenticated, redirecting to login');
             setAllowed(false);
             const redirect = encodeURIComponent(window.location.origin + location.pathname + location.search);
-            window.location.href = `http://localhost:3002/login?redirect=${redirect}`;
+            window.location.href = `${API_BASE}/login?redirect=${redirect}`;
           }
         }
       } catch (e) {
         if (!cancelled) {
           console.error('❌ Auth check failed:', e.message);
           setAllowed(false);
+          const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3002';
           const redirect = encodeURIComponent(window.location.origin + location.pathname + location.search);
-          window.location.href = `http://localhost:3002/login?redirect=${redirect}`;
+          window.location.href = `${API_BASE}/login?redirect=${redirect}`;
         }
       }
     })();

@@ -3,17 +3,18 @@
   "version": "1.0.0",
   "type": "module",
   "description": "POC for rebranding HeyGen using reverse proxy and Playwright authentication",
-  "main": "proxy-with-auth.js",
+  "main": "main-server.js",
   "scripts": {
-    "start": "bash start-all.sh",
+    "start": "node main-server.js",
+    "dev": "DEBUG_FRONTEND=true node main-server.js",
+    "start-old": "bash start-all.sh",
     "stop": "bash stop-all.sh",
     "auth": "node auth-server.js",
     "proxy": "node playwright-live-proxy.js",
     "proxy-fetch": "node playwright-proxy.js",
     "proxy-old": "node proxy-with-auth.js",
     "proxy-simple": "node proxy-server.js",
-    "puppeteer": "node puppeteer-rebrand.js",
-    "dev": "node playwright-live-proxy.js"
+    "puppeteer": "node puppeteer-rebrand.js"
   },
   "dependencies": {
     "cheerio": "^1.0.0-rc.12",
@@ -23,7 +24,7 @@
     "express-fileupload": "^1.5.2",
     "http-proxy-middleware": "^2.0.6",
     "playwright": "^1.56.1",
-    "puppeteer": "^21.5.2",
+    "vite": "^7.1.12",
     "ws": "^8.18.3"
   },
   "devDependencies": {

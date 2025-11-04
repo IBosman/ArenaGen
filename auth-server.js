@@ -17,7 +17,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3002;
+const PORT = process.env.PORT || 3002;
 const STORAGE_FILE = path.join(__dirname, 'heygen-storage.json');
 const COOKIES_FILE = path.join(__dirname, 'heygen-cookies.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
@@ -28,8 +28,15 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
 // Allow proxy and frontend origins to call this server with credentials
+const allowedOrigins = [
+  'http://localhost:3000', 
+  'http://localhost:3001',
+  process.env.FRONTEND_URL,
+  process.env.PROXY_URL
+].filter(Boolean); // Remove undefined values
+
 app.use(cors({ 
-  origin: ['http://localhost:3000', 'http://localhost:3001'],
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -717,7 +724,8 @@ app.get('/login', (req, res) => {
           setTimeout(() => {
             const params = new URLSearchParams(window.location.search);
             const redirect = params.get('redirect');
-            const targetUrl = redirect ? decodeURIComponent(redirect) : 'http://localhost:3001/home';
+            const defaultUrl = '${process.env.FRONTEND_URL || "http://localhost:3001"}/home';
+            const targetUrl = redirect ? decodeURIComponent(redirect) : defaultUrl;
             window.location.href = targetUrl;
           }, 1000);
         } else {
@@ -825,14 +833,16 @@ app.post('/api/login', async (req, res) => {
     
     // Step 3: Issue browser token cookie
     const token = signToken({ id: user.id, email: user.email, username: user.username, role: user.role });
+    const isProduction = process.env.NODE_ENV === 'production';
     const cookie = [
       `arena_token=${token}`,
       'HttpOnly',
       'Path=/',
-      'SameSite=Lax',
+      isProduction ? 'SameSite=None' : 'SameSite=Lax',
+      isProduction ? 'Secure' : '',
       // 7 days
       'Max-Age=604800'
-    ].join('; ');
+    ].filter(Boolean).join('; ');
     res.setHeader('Set-Cookie', cookie);
 
     // Return success
@@ -1037,19 +1047,23 @@ app.post('/api/submit-prompt', async (req, res) => {
   }
 });
 
-// Start server
-app.listen(PORT, () => {
-  loadSession();
+// Export the auth server module
+export function createAuthServer(port = PORT) {
+  const server = app.listen(port, '0.0.0.0', () => {
+    loadSession();
+    
+    console.log('🔐 Auth Server started on port', port);
+    console.log(`   Login URL: http://localhost:${port}`);
+    console.log(`   Status: ${isAuthenticated() ? '✅ Authenticated' : '❌ Not authenticated'}`);
+  });
   
-  console.log('╔════════════════════════════════════════════════════════╗');
-  console.log('║  🔐 ArenaGen - Authentication Server              ║');
-  console.log('╠════════════════════════════════════════════════════════╣');
-  console.log(`║  Login URL:    http://localhost:${PORT}                   ║`);
-  console.log(`║  Status:       ${isAuthenticated() ? '✅ Authenticated' : '❌ Not authenticated'}                ║`);
-  console.log('╠════════════════════════════════════════════════════════╣');
-  console.log('║  Flow:                                                 ║');
-  console.log('║  1. Login here (custom UI)                            ║');
-  console.log('║  2. Playwright authenticates                          ║');
-  console.log('║  3. Redirect to proxy (port 3000)                     ║');
-  console.log('╚════════════════════════════════════════════════════════╝');
-});
+  return { app, server };
+}
+
+// Export utilities for other modules to use
+export { isAuthenticated, sessionCookies };
+
+// If run directly, start the server
+if (import.meta.url === `file://${process.argv[1]}`) {
+  createAuthServer();
+}

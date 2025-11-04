@@ -13,7 +13,7 @@ import fileUpload from 'express-fileupload';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
 const COOKIES_FILE = path.join(__dirname, 'heygen-cookies.json');
 const TARGET = 'https://app.heygen.com';
 
@@ -1029,22 +1029,23 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Start server
-async function start() {
+// Export the proxy server module
+export async function createProxyServer(port = PORT) {
   await initBrowser();
   
-  server.listen(PORT, () => {
-    console.log('╔════════════════════════════════════════════════════════╗');
-    console.log('║  🎭 VideoAI Pro - Live Playwright Proxy               ║');
-    console.log('╠════════════════════════════════════════════════════════╣');
-    console.log(`║  Control Panel: http://localhost:${PORT}                  ║`);
-    console.log(`║  Target:        ${TARGET}                  ║`);
-    console.log('║  Auth Status:   ✅ Authenticated (Playwright)          ║');
-    console.log('╠════════════════════════════════════════════════════════╣');
-    console.log('║  🎭 Browser window opened - interact directly!         ║');
-    console.log('║  🌐 Use control panel to navigate programmatically    ║');
-    console.log('╚════════════════════════════════════════════════════════╝');
+  const httpServer = server.listen(port, '0.0.0.0', () => {
+    console.log('🎭 Proxy Server started on port', port);
+    console.log(`   Control Panel: http://localhost:${port}`);
+    console.log(`   Target: ${TARGET}`);
+    console.log('   Auth Status: ✅ Authenticated (Playwright)');
   });
+  
+  return { app, server: httpServer, browser, context };
+}
+
+// If run directly, start the server
+if (import.meta.url === `file://${process.argv[1]}`) {
+  createProxyServer().catch(console.error);
 }
 
 // Cleanup on exit
@@ -1056,4 +1057,3 @@ process.on('SIGINT', async () => {
   process.exit(0);
 });
 
-start().catch(console.error);

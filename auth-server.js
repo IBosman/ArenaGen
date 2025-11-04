@@ -195,7 +195,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: false,
+      headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
@@ -755,7 +755,7 @@ app.post('/api/bridge/sessions', async (req, res) => {
     }
 
     // Launch a lightweight browser context with stored auth
-    browser = await chromium.launch({ headless: false, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const context = await browser.newContext({ storageState: STORAGE_FILE });
 
     // Use context.request to leverage the authenticated browser context

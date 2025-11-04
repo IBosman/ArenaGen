@@ -23,6 +23,7 @@ const GenerationPage = () => {
   const [sessionPath, setSessionPath] = useState(null);
   const [videoModal, setVideoModal] = useState(null);
   const [generationProgress, setGenerationProgress] = useState(null);
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const wsRef = useRef(null);
   const pollIntervalRef = useRef(null);
@@ -435,6 +436,18 @@ const GenerationPage = () => {
     }
   };
 
+  const handleFileChange = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length > 0) {
+      setAttachedFiles(prev => [...prev, ...files]);
+      console.log('Files attached:', files.map(f => f.name));
+    }
+  };
+
+  const removeFile = (index) => {
+    setAttachedFiles(prev => prev.filter((_, i) => i !== index));
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Chat Messages Area */}
@@ -559,6 +572,48 @@ const GenerationPage = () => {
             </button>
           </div>
 
+          {/* Attached Files Display */}
+          {attachedFiles.length > 0 && (
+            <div className="px-4 pb-4 border-t border-gray-200">
+              <div className="flex flex-wrap gap-4 pt-4">
+                {attachedFiles.map((file, index) => {
+                  const isImage = file.type.startsWith('image/');
+                  const preview = isImage ? URL.createObjectURL(file) : null;
+                  
+                  return (
+                    <div key={index} className="relative group">
+                      <div className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-300 bg-gray-100">
+                        {preview ? (
+                          <img 
+                            src={preview} 
+                            alt={file.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                            <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                            </svg>
+                          </div>
+                        )}
+                      </div>
+                      <button
+                        onClick={() => removeFile(index)}
+                        className="absolute -top-2 -right-2 w-6 h-6 bg-red-500 text-white rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-md"
+                        title="Remove file"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      <p className="text-xs text-gray-600 mt-1 truncate w-24 text-center">{file.name}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Toolbar */}
           <div className="px-4 pb-4 flex items-center gap-3">
             {/* Plus Button */}
@@ -582,7 +637,7 @@ const GenerationPage = () => {
         type="file"
         multiple
         accept="image/*,video/*,.pdf,.doc,.docx,.txt"
-        onChange={() => {}}
+        onChange={handleFileChange}
         className="hidden"
       />
       

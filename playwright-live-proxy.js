@@ -89,7 +89,7 @@ async function initBrowser() {
   }
   
   browser = await chromium.launch({
-    headless: false, // Run in headed mode to see browser window
+    headless: true, // Run headless for server environments
     args: [
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',

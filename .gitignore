@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+package-lock.json
+yarn.lock
+
+# Environment variables
+.env
+.env.local
+
+# Screenshots and generated files
+*.png
+*.jpg
+*.jpeg
+!custom-assets/logo.png
+
+# Logs
+*.log
+npm-debug.log*
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Cache
+.cache/
+dist/
+build/
+
+# Puppeteer & Playwright
+.local-chromium/
+playwright-report/
+test-results/
+
+# Authentication files (sensitive!)
+heygen-storage.json
+heygen-cookies.json
+users.json
+
+# Process IDs
+.pids

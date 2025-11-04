@@ -1,0 +1,50 @@
+HeyGen Rebranding POC - LIVE PLAYWRIGHT SESSION! 🎭
+
+✅ NEW: Live Playwright browser - User interacts directly with controlled browser!
+
+Quick Start:
+1. npm install
+2. npm start (starts both servers)
+3. Open http://localhost:3002 (login page)
+4. Enter HeyGen credentials
+5. Open http://localhost:3000 (control panel)
+6. A browser window opens - interact with it directly!
+
+System Architecture:
+- Port 3002: Auth server (custom login UI)
+- Port 3000: Control panel + WebSocket server
+- Playwright Browser: Live headed browser (authenticated)
+
+Flow:
+1. User logs in at custom UI (port 3002)
+2. Playwright authenticates with HeyGen
+3. Session cookies saved to heygen-cookies.json
+4. Open control panel at port 3000
+5. Playwright opens a LIVE browser window
+6. User interacts directly with the browser
+7. All requests automatically authenticated!
+
+Why Live Playwright?
+✅ Real browser window - no proxying needed
+✅ Direct interaction - click, type, scroll naturally
+✅ No CSP/CORS/worker issues - it's a real browser
+✅ Automatic authentication via Playwright context
+✅ Custom branding injected via addInitScript
+✅ WebSocket control for programmatic navigation
+
+Key Files:
+- auth-server.js (Custom login + Playwright auth)
+- playwright-live-proxy.js (NEW: Live browser session)
+- playwright-proxy.js (Fetch-based proxy - alternative)
+- proxy-with-auth.js (OLD: Reverse proxy)
+- start-all.sh / stop-all.sh (Server management)
+
+Commands:
+- npm start → Start everything
+- npm stop → Stop everything
+- npm run auth → Auth server only
+- npm run proxy → Live Playwright session (NEW)
+- npm run proxy-fetch → Fetch-based proxy
+- npm run proxy-old → Old reverse proxy
+
+⚠️ Educational purposes only!

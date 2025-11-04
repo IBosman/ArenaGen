@@ -1,0 +1,1059 @@
+// Playwright Live Proxy - User interacts with a live Playwright browser
+// Uses WebSocket to stream browser view and handle user interactions
+
+import express from 'express';
+import { chromium } from 'playwright';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import fs from 'fs';
+import { createServer } from 'http';
+import { WebSocketServer } from 'ws';
+import fileUpload from 'express-fileupload';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const PORT = 3000;
+const COOKIES_FILE = path.join(__dirname, 'heygen-cookies.json');
+const TARGET = 'https://app.heygen.com';
+
+const app = express();
+app.use(express.json());
+app.use(fileUpload({
+  useTempFiles: true,
+  tempFileDir: '/tmp/',
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
+}));
+
+const server = createServer(app);
+const wss = new WebSocketServer({ server });
+
+let browser = null;
+let context = null;
+let activePage = null;
+
+// Initialize Playwright browser with authentication
+async function initBrowser() {
+  if (!fs.existsSync(COOKIES_FILE)) {
+    console.error('❌ No authentication cookies found!');
+    console.log('👉 Please login first at: http://localhost:3002\n');
+    process.exit(1);
+  }
+
+  const cookieData = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+  // Handle both old format (array) and new format (object with cookies, expiry, savedAt)
+  const cookies = Array.isArray(cookieData) ? cookieData : (cookieData.cookies || []);
+  
+  browser = await chromium.launch({
+    headless: false, // Run in headed mode so we can see it
+    args: [
+      '--disable-blink-features=AutomationControlled',
+      '--disable-dev-shm-usage',
+      '--no-sandbox'
+    ]
+  });
+
+  context = await browser.newContext({
+    storageState: {
+      cookies: cookies,
+      origins: []
+    },
+    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+    viewport: { width: 1920, height: 1080 },
+    locale: 'en-US',
+    timezoneId: 'America/New_York',
+    permissions: ['clipboard-read', 'clipboard-write'],
+    bypassCSP: true,
+    ignoreHTTPSErrors: true
+  });
+
+  // Create the main page
+  activePage = await context.newPage();
+
+  console.log('✅ Playwright browser initialized with authentication');
+  console.log('🎭 Browser window opened - user can interact directly!');
+}
+
+// Serve the control interface
+app.get('/', (req, res) => {
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>VideoAI Pro - Live Session</title>
+      <style>
+        body {
+          margin: 0;
+          padding: 20px;
+          font-family: system-ui, -apple-system, sans-serif;
+          background: #0f172a;
+          color: white;
+        }
+        .container {
+          max-width: 1200px;
+          margin: 0 auto;
+        }
+        h1 {
+          color: #6366f1;
+          margin-bottom: 10px;
+        }
+        .info {
+          background: #1e293b;
+          padding: 20px;
+          border-radius: 8px;
+          margin-bottom: 20px;
+        }
+        .status {
+          display: inline-block;
+          padding: 4px 12px;
+          background: #10b981;
+          border-radius: 4px;
+          font-size: 14px;
+          margin-left: 10px;
+        }
+        .controls {
+          display: flex;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+        button {
+          padding: 10px 20px;
+          background: #6366f1;
+          color: white;
+          border: none;
+          border-radius: 6px;
+          cursor: pointer;
+          font-size: 14px;
+        }
+        button:hover {
+          background: #4f46e5;
+        }
+        input {
+          flex: 1;
+          padding: 10px;
+          background: #1e293b;
+          border: 1px solid #334155;
+          border-radius: 6px;
+          color: white;
+          font-size: 14px;
+        }
+        .instructions {
+          background: #1e293b;
+          padding: 15px;
+          border-radius: 8px;
+          border-left: 4px solid #6366f1;
+        }
+        .instructions h3 {
+          margin-top: 0;
+        }
+        .instructions ul {
+          margin: 10px 0;
+          padding-left: 20px;
+        }
+        .instructions li {
+          margin: 5px 0;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>🎭 VideoAI Pro - Live Playwright Session <span class="status">● ACTIVE</span></h1>
+        
+        <div class="info">
+          <p><strong>Session Type:</strong> Live Playwright Browser</p>
+          <p><strong>Authentication:</strong> ✅ Authenticated via saved cookies</p>
+          <p><strong>Target:</strong> ${TARGET}</p>
+        </div>
+
+        <div class="controls">
+          <input type="text" id="urlInput" placeholder="Enter path (e.g., /home, /agent/abc123)" value="/home">
+          <button onclick="navigate()">Navigate</button>
+          <button onclick="goBack()">Back</button>
+        </div>
+
+        <div class="instructions">
+          <h3>📋 How to Use</h3>
+          <ul>
+            <li>A <strong>live Playwright browser window</strong> has opened on your desktop</li>
+            <li>All interactions happen in that window - it's fully authenticated</li>
+            <li>Use the controls above to navigate programmatically</li>
+            <li>Or interact directly with the browser window</li>
+            <li>All requests automatically include your authentication</li>
+            <li>No CSP issues, no worker problems - everything just works!</li>
+          </ul>
+          
+          <h3>🎨 Branding</h3>
+          <ul>
+            <li>Custom JavaScript is injected to replace "HeyGen" with "VideoAI Pro"</li>
+            <li>Custom colors applied via CSS injection</li>
+            <li>All modifications happen in the Playwright context</li>
+          </ul>
+        </div>
+      </div>
+
+      <script>
+        const ws = new WebSocket('ws://localhost:${PORT}');
+        
+        ws.onopen = () => {
+          console.log('Connected to Playwright proxy');
+        };
+        
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          console.log('Message from proxy:', data);
+        };
+        
+        function navigate() {
+          const url = document.getElementById('urlInput').value;
+          ws.send(JSON.stringify({ action: 'navigate', url }));
+        }
+        
+        // Reload disabled to avoid interrupting agent responses
+        
+        function goBack() {
+          ws.send(JSON.stringify({ action: 'back' }));
+        }
+        
+        // Navigate to home on load
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            navigate();
+          }
+        }, 500);
+      </script>
+    </body>
+    </html>
+  `);
+});
+
+// HTTP endpoint to submit initial prompt (called by auth server)
+app.post('/submit-prompt', async (req, res) => {
+  const { prompt } = req.body;
+  
+  if (!prompt) {
+    return res.json({ success: false, error: 'Prompt is required' });
+  }
+  
+  console.log('📝 Received submit-prompt request:', prompt);
+  
+  try {
+    if (!activePage) {
+      return res.json({ success: false, error: 'Browser not initialized' });
+    }
+    
+    // Navigate to home page only if not already there
+    const currentUrl = activePage.url();
+    if (!currentUrl.includes('app.heygen.com/home')) {
+      console.log('🌐 Navigating to HeyGen home...');
+      await activePage.goto('https://app.heygen.com/home', { 
+        waitUntil: 'domcontentloaded',
+        timeout: 300000 
+      });
+    } else {
+      console.log('✅ Already on HeyGen home page');
+    }
+    
+    
+    // Wait for input field
+    console.log('⏳ Waiting for input field...');
+    const inputSelector = 'div[role="textbox"][contenteditable="true"]';
+    await activePage.waitForSelector(inputSelector, { timeout: 60000 });
+    
+    // Type and submit
+    console.log('⌨️  Typing prompt...');
+    await activePage.click(inputSelector);
+    await activePage.fill(inputSelector, prompt);
+    await activePage.waitForTimeout(500);
+    
+    console.log('🖱️  Clicking submit button...');
+    const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
+    await activePage.click(buttonSelector);
+    
+    // Wait for navigation to agent session
+    console.log('⏳ Waiting for session page...');
+    await activePage.waitForURL(/\/agent\/.*/, { timeout: 300000 });
+    
+    const sessionUrl = activePage.url();
+    const sessionPath = sessionUrl.replace('https://app.heygen.com', '');
+    console.log('📍 Session URL:', sessionUrl);
+    
+    
+    res.json({
+      success: true,
+      sessionPath: sessionPath,
+      sessionUrl: sessionUrl
+    });
+  } catch (error) {
+    console.error('❌ Error submitting prompt:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// HTTP endpoint to upload files
+app.post('/upload-files', async (req, res) => {
+  const files = req.files;
+  
+  if (!files || Object.keys(files).length === 0) {
+    return res.json({ success: false, error: 'No files provided' });
+  }
+  
+  console.log('📁 Received file upload request with', Object.keys(files).length, 'files');
+  console.log('📋 Files object keys:', Object.keys(files));
+  
+  try {
+    if (!activePage) {
+      return res.json({ success: false, error: 'Browser not initialized' });
+    }
+    
+    // Get file paths from uploaded files
+    // express-fileupload stores files with their temp paths
+    const filePaths = Object.values(files).map(file => {
+      console.log('📄 File object:', { name: file.name, tempFilePath: file.tempFilePath, path: file.path, size: file.size });
+      return file.tempFilePath || file.path;
+    }).filter(Boolean);
+    
+    console.log('📂 File paths to upload:', filePaths);
+    
+    if (filePaths.length === 0) {
+      return res.json({ success: false, error: 'No valid file paths found' });
+    }
+    
+    // Navigate to HeyGen home first
+    console.log('🌐 Navigating to HeyGen home...');
+    await activePage.goto('https://app.heygen.com/home', { 
+      waitUntil: 'networkidle',
+      timeout: 30000 
+    });
+    console.log('✅ Navigated to HeyGen home');
+    
+    // Wait for page to fully load and buttons to appear
+    console.log('⏳ Waiting for page to fully load...');
+    await activePage.waitForTimeout(3000);
+    
+    // Wait for the upload button to be present
+    try {
+      await activePage.waitForSelector('button[aria-haspopup="dialog"]', { timeout: 10000 });
+      console.log('✅ Upload button found');
+    } catch (e) {
+      console.log('⚠️ Upload button not found, continuing anyway...');
+    }
+    
+    // First, let's check what buttons are available on the page
+    const buttons = await activePage.evaluate(() => {
+      return Array.from(document.querySelectorAll('button')).map(btn => ({
+        text: btn.textContent.substring(0, 50),
+        ariaLabel: btn.getAttribute('aria-label'),
+        ariaHaspopup: btn.getAttribute('aria-haspopup'),
+        dataState: btn.getAttribute('data-state'),
+        classes: btn.className.substring(0, 100)
+      }));
+    });
+    console.log('🔘 Available buttons count:', buttons.length);
+    console.log('🔘 Upload buttons:', buttons.filter(b => b.ariaHaspopup === 'dialog'));
+    
+    // Set up file chooser listener BEFORE clicking
+    console.log('⏳ Waiting for file chooser event...');
+    const fileChooserPromise = activePage.waitForEvent('filechooser', { timeout: 200000 });
+    
+    // Try multiple selectors for the upload button
+    const uploadButtonSelectors = [
+      'button[aria-haspopup="dialog"][data-state="closed"]',
+      'button[aria-haspopup="dialog"]',
+      'button.tw-h-\\[32px\\].tw-w-\\[32px\\]',
+      'button:has(iconpark-icon[name="add"])',
+      'button[aria-expanded="false"]'
+    ];
+    
+    let clicked = false;
+    for (const selector of uploadButtonSelectors) {
+      try {
+        const button = await activePage.$(selector);
+        if (button) {
+          console.log(`🖱️  Found button with selector: ${selector}`);
+          await activePage.click(selector);
+          clicked = true;
+          console.log('✅ Button clicked');
+          break;
+        } else {
+          console.log(`⏭️  Selector ${selector} not found, trying next...`);
+        }
+      } catch (e) {
+        console.log(`❌ Error with selector ${selector}:`, e.message);
+      }
+    }
+    
+    if (!clicked) {
+      return res.json({ success: false, error: 'Could not find upload button' });
+    }
+    
+    // Wait for file chooser and set files
+    try {
+      const fileChooser = await fileChooserPromise;
+      console.log('📤 File chooser detected, setting files...');
+      await fileChooser.setFiles(filePaths);
+      console.log('✅ Files set on file chooser');
+    } catch (chooserError) {
+      console.error('❌ File chooser error:', chooserError.message);
+      return res.json({ success: false, error: 'File chooser timeout or error: ' + chooserError.message });
+    }
+    
+    // Wait a moment for files to be processed
+    await activePage.waitForTimeout(2000);
+    
+    console.log('✅ Files uploaded successfully');
+    res.json({
+      success: true,
+      message: 'Files uploaded successfully',
+      filesCount: filePaths.length
+    });
+  } catch (error) {
+    console.error('❌ Error uploading files:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// WebSocket handler for browser control
+wss.on('connection', (ws) => {
+  console.log('🔌 Client connected via WebSocket');
+  
+  ws.on('message', async (message) => {
+    try {
+      const data = JSON.parse(message);
+      console.log('📨 Received command:', data);
+      
+      if (!activePage) {
+        ws.send(JSON.stringify({ error: 'No active page' }));
+        return;
+      }
+      
+      switch (data.action) {
+        case 'navigate':
+          const targetUrl = TARGET + data.url;
+          console.log(`🌐 Navigating to: ${targetUrl}`);
+          try {
+            const current = activePage.url();
+            if (current === targetUrl) {
+              console.log('➡️  Already on target URL, skipping navigation to avoid reload');
+            } else {
+              await activePage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 300000 });
+            }
+          } catch (navErr) {
+            console.warn('Navigation check failed, proceeding with goto:', navErr?.message || navErr);
+            await activePage.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 300000 });
+          }
+          // If navigating to an agent session, attempt to extract chat messages
+          let messages = null;
+          try {
+            if (typeof data.url === 'string' && data.url.startsWith('/agent/')) {
+              try {
+                await activePage.waitForSelector('.tw-bg-fill-block, div.tw-flex.tw-justify-start', { timeout: 5000 });
+              } catch (_) {}
+              messages = await activePage.evaluate(() => {
+                // Get all chat rows AND video cards in order
+                const allElements = Array.from(
+                  document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-border-brand.tw-bg-more-brandLighter')
+                );
+                
+                const allMessages = allElements.map(row => {
+                  // Check if this is a video card (not a chat row)
+                  if (row.classList.contains('tw-border-brand') && row.classList.contains('tw-bg-more-brandLighter')) {
+                    const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]');
+                    const titleElement = row.querySelector('.tw-text-base.tw-font-bold.tw-tracking-tight');
+                    const subtitleElement = row.querySelector('.tw-text-sm.tw-font-medium.tw-text-textBody span');
+                    
+                    if (thumbnailImg) {
+                      const thumbnail = thumbnailImg.src;
+                      const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                      
+                      return {
+                        role: 'agent',
+                        text: subtitleElement ? subtitleElement.innerText.trim() : '',
+                        video: {
+                          thumbnail: thumbnail,
+                          videoUrl: null,
+                          poster: thumbnail,
+                          title: title
+                        }
+                      };
+                    }
+                    return null;
+                  }
+                  
+                  // Regular chat row logic
+                  const isUser = row.classList.contains('tw-justify-end');
+
+                  if (isUser) {
+                    const userBubble = row.querySelector('.tw-bg-fill-block');
+                    const text = userBubble ? userBubble.innerText.trim() : '';
+                    return text ? { role: 'user', text } : null;
+                  }
+
+                  // agent - get main reply, skip reasoning. Use robust selector set and fallbacks.
+                  const replySelectors = [
+                    'div.tw-prose',
+                    'div[role="region"] .tw-prose',
+                    'div.tw-text-textTitle ~ div.tw-prose',
+                    'div[class*="prose"]',
+                    'div.tw-bg-fill-block:not(:has(textarea))',
+                    'div[dir="auto"]'
+                  ];
+                  let replyEl = null;
+                  for (const sel of replySelectors) {
+                    const el = row.querySelector(sel);
+                    // Skip elements inside the Reasoning section wrapper
+                    const inReasoning = el && el.closest('div.tw-border-l-2.tw-border-line');
+                    if (el && !inReasoning && el.innerText && el.innerText.trim().length > 0) { replyEl = el; break; }
+                  }
+                  // Fallback: pick the longest text node in the row excluding buttons/inputs
+                  let text = '';
+                  if (replyEl) {
+                    text = replyEl.innerText.trim();
+                  } else {
+                    const blacklist = ['BUTTON', 'TEXTAREA', 'INPUT', 'SELECT'];
+                    const textCandidates = [];
+                    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null);
+                    while (walker.nextNode()) {
+                      const node = walker.currentNode;
+                      const parentTag = node.parentElement?.tagName || '';
+                      if (blacklist.includes(parentTag)) continue;
+                      const val = node.nodeValue?.trim() || '';
+                      if (val.length > 0) textCandidates.push(val);
+                    }
+                    if (textCandidates.length > 0) {
+                      // choose the longest chunk assuming it's the reply body
+                      text = textCandidates.sort((a,b) => b.length - a.length)[0];
+                    }
+                  }
+                  
+                  // Check for video completion card - navigate action
+                  let video = null;
+                  
+                  // Try to find video element first
+                  const videoElement = row.querySelector('video');
+                  if (videoElement) {
+                    const videoSrc = videoElement.src || videoElement.querySelector('source')?.src;
+                    const videoPoster = videoElement.poster;
+                    
+                    // Try to find thumbnail image
+                    const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]') || 
+                                        row.querySelector('img[class*="thumbnail"]') ||
+                                        row.querySelector('img');
+                    const thumbnail = thumbnailImg ? thumbnailImg.src : videoPoster;
+                    
+                    // Extract title from nearby text
+                    const titleElement = row.querySelector('div.tw-text-textTitle, div.tw-font-medium, h3, h2');
+                    const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                    
+                    video = {
+                      thumbnail: thumbnail || videoPoster,
+                      videoUrl: videoSrc,
+                      poster: videoPoster || thumbnail,
+                      title: title
+                    };
+                  }
+                  // Fallback: check for thumbnail image without video element
+                  else {
+                    const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]') || 
+                                        row.querySelector('img[src*="heygen"]');
+                    if (thumbnailImg) {
+                      const thumbnail = thumbnailImg.src;
+                      const titleElement = row.querySelector('div.tw-text-textTitle, div.tw-font-medium, h3, h2');
+                      const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                      
+                      video = {
+                        thumbnail: thumbnail,
+                        videoUrl: null,
+                        poster: thumbnail,
+                        title: title
+                      };
+                    }
+                  }
+                  
+                  return text || video ? { role: 'agent', text, video } : null;
+                }).filter(Boolean);
+
+                return { messages: allMessages };
+              });
+            }
+          } catch (err) {
+            messages = { error: 'message_extraction_failed', details: String(err && err.message ? err.message : err) };
+          }
+          ws.send(JSON.stringify(Object.assign({ success: true, url: targetUrl }, messages ? { messages } : {})));
+          break;
+          
+        // 'reload' action disabled to avoid interrupting agent responses
+          
+        case 'back':
+          console.log('⬅️ Going back');
+          await activePage.goBack();
+          ws.send(JSON.stringify({ success: true }));
+          break;
+          
+        case 'get_messages':
+          console.log('📬 Fetching messages from current page');
+          let fetchedMessages = null;
+          try {
+            const currentUrl = activePage.url();
+            if (currentUrl.includes('/agent/')) {
+              try {
+                await activePage.waitForSelector('.tw-bg-fill-block, div.tw-flex.tw-justify-start', { timeout: 2000 });
+              } catch (_) {}
+              // Give the DOM a brief moment to render streamed content
+              try { await activePage.waitForTimeout(300); } catch (_) {}
+              // Wait a bit for video elements to load if they exist
+              try {
+                await activePage.waitForSelector('video, img[alt="draft thumbnail"]', { timeout: 3000 });
+              } catch (_) {}
+              fetchedMessages = await activePage.evaluate(() => {
+                // Get all chat rows AND video cards in order (exclude hidden placeholders)
+                const allElements = Array.from(
+                  document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-border-brand.tw-bg-more-brandLighter')
+                ).filter(el => !el.classList.contains('tw-hidden'));
+                console.log('Found', allElements.length, 'message rows');
+                
+                const messages = allElements.map((row, idx) => {
+                  console.log(`Processing row ${idx}:`, row.className);
+                  
+                  // Check if this is a video card (not a chat row)
+                  if (row.classList.contains('tw-border-brand') && row.classList.contains('tw-bg-more-brandLighter')) {
+                    const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]');
+                    const titleElement = row.querySelector('.tw-text-base.tw-font-bold.tw-tracking-tight');
+                    const subtitleElement = row.querySelector('.tw-text-sm.tw-font-medium.tw-text-textBody span');
+                    
+                    if (thumbnailImg) {
+                      const thumbnail = thumbnailImg.src;
+                      const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                      
+                      // Video URL might be in a video element or we need to construct it
+                      // For now, we'll mark it as needing to be clicked to get the URL
+                      return {
+                        role: 'agent',
+                        text: subtitleElement ? subtitleElement.innerText.trim() : '',
+                        video: {
+                          thumbnail: thumbnail,
+                          videoUrl: null, // Will be populated when card is clicked
+                          poster: thumbnail,
+                          title: title
+                        }
+                      };
+                    }
+                    return null;
+                  }
+                  
+                  // Regular chat row logic
+                  const isUser = row.classList.contains('tw-justify-end');
+
+                  if (isUser) {
+                    const userBubble = row.querySelector('.tw-bg-fill-block');
+                    const text = userBubble ? userBubble.innerText.trim() : '';
+                    return text ? { role: 'user', text } : null;
+                  }
+
+                  // agent - get main reply, skip reasoning
+                  // Try multiple selectors to find the agent message text
+                  let reply = null;
+                  const replySelectors = [
+                    'div.tw-prose',
+                    'div.tw-text-textTitle div.tw-prose',
+                    'div > div.tw-text-textTitle > div.tw-prose',
+                    'div > div.tw-bg-fill-block'
+                  ];
+                  for (const sel of replySelectors) {
+                    const el = row.querySelector(sel);
+                    // Skip elements inside the Reasoning section wrapper
+                    const inReasoning = el && el.closest('div.tw-border-l-2.tw-border-line');
+                    if (el && !inReasoning) {
+                      const txt = el.innerText?.trim() || el.textContent?.trim();
+                      if (txt && txt.length > 0) {
+                        reply = el;
+                        console.log('Found agent text with selector:', sel, 'text:', txt.substring(0, 50));
+                        break;
+                      }
+                    }
+                  }
+
+                  let text = '';
+                  if (reply) {
+                    // Try innerText first, fallback to textContent
+                    text = reply.innerText?.trim() || reply.textContent?.trim() || '';
+                    console.log('Agent message text length:', text.length);
+                  } else {
+                    console.log('No reply element found for agent row');
+                  }
+                  
+                  // Check for video completion card - get_messages action
+                  let video = null;
+                  
+                  // Try to find video element first
+                  const videoElement = row.querySelector('video');
+                  if (videoElement) {
+                    const videoSrc = videoElement.src || videoElement.querySelector('source')?.src;
+                    const videoPoster = videoElement.poster;
+                    
+                    // Try to find thumbnail image
+                    const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]') || 
+                                        row.querySelector('img[class*="thumbnail"]') ||
+                                        row.querySelector('img');
+                    const thumbnail = thumbnailImg ? thumbnailImg.src : videoPoster;
+                    
+                    // Extract title from nearby text
+                    const titleElement = row.querySelector('div.tw-text-textTitle, div.tw-font-medium, h3, h2');
+                    const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                    
+                    video = {
+                      thumbnail: thumbnail || videoPoster,
+                      videoUrl: videoSrc,
+                      poster: videoPoster || thumbnail,
+                      title: title
+                    };
+                  }
+                  // Fallback: check for thumbnail image without video element
+                  else {
+                    const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]') || 
+                                        row.querySelector('img[src*="heygen"]');
+                    if (thumbnailImg) {
+                      const thumbnail = thumbnailImg.src;
+                      const titleElement = row.querySelector('div.tw-text-textTitle, div.tw-font-medium, h3, h2');
+                      const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                      
+                      video = {
+                        thumbnail: thumbnail,
+                        videoUrl: null,
+                        poster: thumbnail,
+                        title: title
+                      };
+                    }
+                  }
+                  
+                  // Only return if we have text or video
+                  if (text || video) {
+                    return { role: 'agent', text, video };
+                  }
+                  return null;
+                }).filter(Boolean);
+
+                return { messages };
+              });
+            }
+          } catch (err) {
+            fetchedMessages = { error: 'message_fetch_failed', details: String(err && err.message ? err.message : err) };
+          }
+          ws.send(JSON.stringify(Object.assign({ success: true, action: 'get_messages' }, fetchedMessages || {})));
+          break;
+          
+        case 'debug_dom':
+          console.log('🔍 Debugging DOM structure');
+          try {
+            const domInfo = await activePage.evaluate(() => {
+              // Try multiple selectors to find message rows
+              const selectors = [
+                'div.tw-flex.tw-justify-start',
+                'div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start',
+                'div[class*="tw-flex"][class*="tw-justify"]',
+                'div[role="region"] > div',
+                'div.tw-flex',
+                '[class*="message"]'
+              ];
+              
+              let rows = [];
+              for (const sel of selectors) {
+                const found = document.querySelectorAll(sel);
+                if (found.length > 0) {
+                  rows = Array.from(found).filter(el => {
+                    const text = el.innerText?.trim();
+                    return text && text.length > 0 && !el.querySelector('button');
+                  });
+                  if (rows.length > 0) break;
+                }
+              }
+              
+              // Get all divs with text to see structure
+              const allDivs = Array.from(document.querySelectorAll('div')).filter(d => {
+                const text = d.innerText?.trim();
+                return text && text.length > 20 && text.length < 500;
+              }).slice(0, 10);
+              
+              const rowDetails = rows.map((row, idx) => ({
+                index: idx,
+                classes: row.className,
+                text: row.innerText?.substring(0, 100) || '',
+                hasVideo: !!row.querySelector('video'),
+                hasImg: !!row.querySelector('img')
+              }));
+              
+              const lastRow = rows[rows.length - 1];
+              
+              if (!lastRow) return { 
+                error: 'No rows found', 
+                totalRows: 0,
+                allDivsCount: allDivs.length,
+                allDivs: allDivs.map(d => ({ classes: d.className, text: d.innerText?.substring(0, 50) }))
+              };
+              
+              // Check if last row is user or agent
+              const isLastRowUser = lastRow.classList.contains('tw-justify-end');
+              
+              // Get text from last row
+              let lastRowText = '';
+              const proseEl = lastRow.querySelector('div.tw-prose');
+              if (proseEl) {
+                lastRowText = proseEl.innerText?.substring(0, 200) || '';
+              } else {
+                const textNodes = [];
+                const walker = document.createTreeWalker(lastRow, NodeFilter.SHOW_TEXT, null);
+                while (walker.nextNode()) {
+                  const text = walker.currentNode.nodeValue?.trim();
+                  if (text && text.length > 0) textNodes.push(text);
+                }
+                lastRowText = textNodes.join(' ').substring(0, 200);
+              }
+              
+              const hasVideo = !!lastRow.querySelector('video');
+              const hasImg = !!lastRow.querySelector('img');
+              const imgAlt = lastRow.querySelector('img')?.alt;
+              const imgSrc = lastRow.querySelector('img')?.src;
+              const videoSrc = lastRow.querySelector('video')?.src;
+              const allImgs = Array.from(document.querySelectorAll('img')).map(img => ({
+                alt: img.alt,
+                src: img.src.substring(0, 100)
+              }));
+              const allVideos = Array.from(document.querySelectorAll('video')).map(v => ({
+                src: v.src.substring(0, 100),
+                poster: v.poster?.substring(0, 100)
+              }));
+              
+              return {
+                totalRows: rows.length,
+                rowDetails: rowDetails,
+                lastRowIsUser: isLastRowUser,
+                lastRowText: lastRowText,
+                lastRowHasVideo: hasVideo,
+                lastRowHasImg: hasImg,
+                lastRowImgAlt: imgAlt,
+                lastRowImgSrc: imgSrc?.substring(0, 100),
+                lastRowVideoSrc: videoSrc?.substring(0, 100),
+                allImagesCount: allImgs.length,
+                allVideosCount: allVideos.length,
+                allImages: allImgs,
+                allVideos: allVideos
+              };
+            });
+            console.log('🔍 Debug info:', JSON.stringify(domInfo, null, 2));
+            ws.send(JSON.stringify({ success: true, action: 'debug_dom', data: domInfo }));
+          } catch (err) {
+            console.error('Debug error:', err);
+            ws.send(JSON.stringify({ success: false, action: 'debug_dom', error: err.message }));
+          }
+          break;
+          
+        case 'get_video_url':
+          console.log('🎬 Getting video URL from card');
+          try {
+            // Click the video card to open the player
+            const videoCard = await activePage.$('div.tw-border-brand.tw-bg-more-brandLighter');
+            if (!videoCard) {
+              ws.send(JSON.stringify({ success: false, error: 'Video card not found' }));
+              break;
+            }
+            
+            await videoCard.click();
+            
+            // Wait for video element to appear
+            await activePage.waitForSelector('video', { timeout: 5000 });
+            
+            // Extract video URL
+            const videoData = await activePage.evaluate(() => {
+              const video = document.querySelector('video');
+              if (!video) return null;
+              
+              return {
+                videoUrl: video.src || video.querySelector('source')?.src,
+                poster: video.poster,
+                duration: video.duration
+              };
+            });
+            
+            // Close the modal/player if there's a close button
+            try {
+              const closeButton = await activePage.$('button[aria-label="Close"], button:has-text("Close"), [class*="close"]');
+              if (closeButton) await closeButton.click();
+            } catch (_) {}
+            
+            ws.send(JSON.stringify({ success: true, action: 'get_video_url', data: videoData }));
+          } catch (err) {
+            ws.send(JSON.stringify({ success: false, action: 'get_video_url', error: err.message }));
+          }
+          break;
+          
+        case 'send_message':
+          console.log('💬 Sending message to agent session');
+          try {
+            const currentUrl = activePage.url();
+            if (!currentUrl.includes('/agent/')) {
+              ws.send(JSON.stringify({ success: false, error: 'Not on agent session page' }));
+              break;
+            }
+            
+            const message = data.message;
+            if (!message || !message.trim()) {
+              ws.send(JSON.stringify({ success: false, error: 'Message is required' }));
+              break;
+            }
+            
+            // Find and fill the input field
+            const inputSelector = 'div[role="textbox"][contenteditable="true"]';
+            await activePage.waitForSelector(inputSelector, { timeout: 5000 });
+            await activePage.click(inputSelector);
+            await activePage.fill(inputSelector, message);
+            
+            // Wait a moment for the text to be entered
+            await activePage.waitForTimeout(500);
+            
+            // Click the submit button
+            const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
+            await activePage.click(buttonSelector);
+            
+            console.log('✅ Message sent successfully');
+            ws.send(JSON.stringify({ success: true, action: 'send_message' }));
+          } catch (err) {
+            console.error('❌ Error sending message:', err);
+            ws.send(JSON.stringify({ success: false, action: 'send_message', error: err.message }));
+          }
+          break;
+          
+        case 'get_generation_progress':
+          console.log('📊 Getting video generation progress');
+            try {
+              const progressData = await activePage.evaluate(() => {
+              // First, check if percentage exists anywhere on the page
+              const percentageText = [...document.querySelectorAll('span.tw-font-semibold.tw-text-textTitleRev')]
+                .map(el => el.innerText)
+                .find(text => text.includes('%'));
+              const percentage = percentageText ? parseInt(percentageText.replace('%', '')) : 0;
+              
+              console.log('🔍 Percentage search result:', percentageText, '→', percentage);
+              
+              // Look for the progress card - it has specific classes and structure
+              const progressCard = document.querySelector('div.tw-flex.tw-flex-col.tw-items-stretch.tw-gap-4.tw-rounded-2xl.tw-border.tw-border-line.tw-bg-fill-general.tw-p-4.tw-relative.tw-cursor-pointer.tw-group');
+              
+              console.log('🔍 Progress card found:', !!progressCard);
+              
+              if (!progressCard && !percentageText) {
+                return { isGenerating: false };
+              }
+              
+              // If we have percentage but no card, still return progress data
+              if (!progressCard && percentageText) {
+                return {
+                  isGenerating: true,
+                  percentage,
+                  currentStatus: 'Processing',
+                  currentStep: '',
+                  message: 'Our Video Agent is working on your video',
+                  steps: []
+                };
+              }
+              
+              // Extract status text (Understanding, Planning, Creating)
+              // These are in the left column of the progress section
+              const statusElements = progressCard.querySelectorAll('.tw-flex.tw-flex-col.tw-gap-2 > div.tw-text-sm');
+              let currentStatus = 'Processing';
+              statusElements.forEach(el => {
+                if (el.classList.contains('tw-font-bold') && el.classList.contains('tw-text-textTitle')) {
+                  currentStatus = el.textContent.trim();
+                }
+              });
+              
+              // Extract current step with orange spinner (ongoing step)
+              const currentStepEl = progressCard.querySelector('iconpark-icon[name="onboarding-ongoing"][theme="filled"] + span.tw-text-sm.tw-text-textTitle.tw-font-bold');
+              const currentStep = currentStepEl ? currentStepEl.textContent.trim() : '';
+              
+              // Extract all steps
+              const allSteps = Array.from(progressCard.querySelectorAll('.tw-flex.tw-items-center.tw-gap-3')).map(stepEl => {
+                const icon = stepEl.querySelector('iconpark-icon');
+                const text = stepEl.querySelector('span.tw-text-sm.tw-text-textTitle');
+                let status = 'pending';
+                
+                if (icon) {
+                  if (icon.getAttribute('name') === 'check-one-fill') {
+                    status = 'completed';
+                  } else if (icon.getAttribute('name') === 'onboarding-ongoing') {
+                    status = 'current';
+                  }
+                }
+                
+                return {
+                  text: text ? text.textContent.trim() : '',
+                  status
+                };
+              });
+              
+              // Extract main message
+              const messageEl = progressCard.querySelector('.tw-text-sm.tw-font-medium.tw-text-textBody span');
+              const message = messageEl ? messageEl.textContent.trim() : 'Our Video Agent is working on your video';
+              
+              return {
+                isGenerating: true,
+                percentage,
+                currentStatus,
+                currentStep,
+                message,
+                steps: allSteps
+              };
+            });
+            
+            console.log('📊 Progress data:', progressData);
+            if (progressData && progressData.isGenerating && Number.isFinite(progressData.percentage)) {
+              console.log(`📈 Detected generation percentage: ${progressData.percentage}%`);
+            } else {
+              console.log('🔍 No percentage found in progress card');
+            }
+            ws.send(JSON.stringify({ success: true, action: 'get_generation_progress', data: progressData }));
+          } catch (err) {
+            console.error('❌ Error getting progress:', err);
+            ws.send(JSON.stringify({ success: false, action: 'get_generation_progress', error: err.message }));
+          }
+          break;
+          
+        default:
+          ws.send(JSON.stringify({ error: 'Unknown action' }));
+      }
+    } catch (error) {
+      console.error('❌ Error handling message:', error);
+      ws.send(JSON.stringify({ error: error.message }));
+    }
+  });
+  
+  ws.on('close', () => {
+    console.log('🔌 Client disconnected');
+  });
+});
+
+// Start server
+async function start() {
+  await initBrowser();
+  
+  server.listen(PORT, () => {
+    console.log('╔════════════════════════════════════════════════════════╗');
+    console.log('║  🎭 VideoAI Pro - Live Playwright Proxy               ║');
+    console.log('╠════════════════════════════════════════════════════════╣');
+    console.log(`║  Control Panel: http://localhost:${PORT}                  ║`);
+    console.log(`║  Target:        ${TARGET}                  ║`);
+    console.log('║  Auth Status:   ✅ Authenticated (Playwright)          ║');
+    console.log('╠════════════════════════════════════════════════════════╣');
+    console.log('║  🎭 Browser window opened - interact directly!         ║');
+    console.log('║  🌐 Use control panel to navigate programmatically    ║');
+    console.log('╚════════════════════════════════════════════════════════╝');
+  });
+}
+
+// Cleanup on exit
+process.on('SIGINT', async () => {
+  console.log('\n🛑 Shutting down...');
+  if (activePage) await activePage.close();
+  if (context) await context.close();
+  if (browser) await browser.close();
+  process.exit(0);
+});
+
+start().catch(console.error);

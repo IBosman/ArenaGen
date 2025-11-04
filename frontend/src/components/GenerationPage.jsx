@@ -48,7 +48,7 @@ const GenerationPage = () => {
 
   // Connect to Playwright proxy WebSocket
   useEffect(() => {
-    const PROXY_WS_URL = process.env.REACT_APP_PROXY_WS_URL || 'ws://localhost:3000';
+    const PROXY_WS_URL = process.env.REACT_APP_PROXY_WS_URL || 'ws://localhost:3000/proxy';
     const ws = new WebSocket(PROXY_WS_URL);
     wsRef.current = ws;
     
@@ -378,7 +378,7 @@ const GenerationPage = () => {
       } else {
         // No session yet, create a new one via backend
         console.log('Creating new session');
-        const response = await fetch('http://localhost:3002/api/submit-prompt', {
+        const response = await fetch('http://localhost:3000/auth/api/submit-prompt', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

@@ -14,8 +14,8 @@ const HomePage = () => {
     setIsSubmitting(true);
     
     try {
-      const PROXY_HTTP_BASE = process.env.REACT_APP_PROXY_HTTP_BASE || 'http://localhost:3000';
-      const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3002';
+      const PROXY_HTTP_BASE = process.env.REACT_APP_PROXY_HTTP_BASE || 'http://localhost:3000/proxy';
+      const API_BASE = process.env.REACT_APP_API_BASE || 'http://localhost:3000/auth';
       
       // Upload files first if any
       if (attachedFiles.length > 0) {

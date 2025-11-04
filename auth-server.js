@@ -16,17 +16,18 @@ dotenv.config();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const authRouter = express.Router();
 const app = express();
-const PORT = process.env.PORT || 3002;
+const PORT = process.env.PORT || 3000;
 const STORAGE_FILE = path.join(__dirname, 'heygen-storage.json');
 const COOKIES_FILE = path.join(__dirname, 'heygen-cookies.json');
 const USERS_FILE = path.join(__dirname, 'users.json');
 const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-me';
 
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+authRouter.use(express.json());
+authRouter.use(express.urlencoded({ extended: true }));
+authRouter.use(express.static(path.join(__dirname, 'public')));
 // Allow proxy and frontend origins to call this server with credentials
 const allowedOrigins = [
   'http://localhost:3000', 
@@ -35,7 +36,7 @@ const allowedOrigins = [
   process.env.PROXY_URL
 ].filter(Boolean); // Remove undefined values
 
-app.use(cors({ 
+authRouter.use(cors({ 
   origin: allowedOrigins,
   credentials: true
 }));
@@ -196,10 +197,18 @@ async function refreshSession() {
   try {
     browser = await chromium.launch({ 
       headless: true,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ]
+    });
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 800 },
+      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36',
     });
     
-    const context = await browser.newContext();
     const page = await context.newPage();
     
     console.log('📱 Navigating to HeyGen login...');
@@ -210,20 +219,68 @@ async function refreshSession() {
     
     // Step 1: Enter email + Continue
     console.log('📧 Entering email...');
+    await page.waitForSelector('input[placeholder="Enter email"]', { state: 'visible', timeout: 10000 });
     await page.getByPlaceholder('Enter email').fill(email);
     await page.getByRole('button', { name: 'Continue' }).click();
     
-    // Wait for password field
-    await page.waitForTimeout(2000);
+    // Wait for password field to appear
+    console.log('⏳ Waiting for password field...');
+    await page.waitForSelector('input[type="password"]', { state: 'visible', timeout: 15000 });
     
     // Step 2: Enter password + Log in
     console.log('🔒 Entering password...');
     await page.getByPlaceholder('Enter password').fill(password);
+    
+    // Wait a moment for the button to be ready
+    await page.waitForTimeout(1000);
+    
+    console.log('🖱️  Clicking login button...');
     await page.getByRole('button', { name: 'Log in' }).click();
     
-    // Wait for navigation after login
-    console.log('⏳ Waiting for login to complete...');
-    await page.waitForURL('https://app.heygen.com/home', { timeout: 20000 });
+    // Wait for page load after login
+    console.log('⏳ Waiting for page to load...');
+    await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
+
+    // Give React time to redirect and render the home page
+    await page.waitForTimeout(9000); // 3–5 seconds is usually enough
+    
+    // Wait a bit for any redirects to complete (like in the working POC)
+    console.log('⏳ Waiting for redirect...');
+    await page.waitForTimeout(5000);
+    
+    // Poll for the URL to change to /home (handles headless mode better)
+    console.log('⏳ Waiting for app.heygen.com/home...');
+    let currentUrl = page.url();
+    let attempts = 0;
+    const maxAttempts = 12; // 12 * 5 seconds = 60 seconds total
+    
+    while (!currentUrl.includes('/home') && attempts < maxAttempts) {
+      console.log(`  Current URL: ${currentUrl}`);
+      await page.waitForTimeout(5000);
+      currentUrl = page.url();
+      attempts++;
+    }
+    
+    console.log('Current URL after login:', currentUrl);
+    
+    // Check if login was successful
+    if (currentUrl.includes('/login')) {
+      // Take a screenshot for debugging
+      await page.screenshot({ path: 'login-failed.png' });
+      throw new Error('Login failed - still on login page. Check credentials or see login-failed.png');
+    }
+    
+    // Wait for the main chat interface to be ready
+    console.log('⏳ Waiting for chat interface...');
+    try {
+      await page.waitForSelector('div[role="textbox"][contenteditable="true"]', { 
+        state: 'visible', 
+        timeout: 30000 
+      });
+      console.log('✅ Login complete and page fully loaded!');
+    } catch (selectorError) {
+      console.warn('⚠️  Chat interface selector not found, but login may have succeeded. URL:', currentUrl);
+    }
     
     // Get cookies from the logged-in session
     const cookies = await context.cookies();
@@ -247,21 +304,21 @@ async function refreshSession() {
 }
 
 // Custom login page (root will check browser token, not HeyGen cookies)
-app.get('/', (req, res) => {
+authRouter.get('/', (req, res) => {
   const user = getUserFromRequest(req);
   if (user) {
     // Redirect to frontend home if browser token is valid
-    res.redirect('http://localhost:3001/home');
+    res.redirect('/home');
   } else {
-    res.redirect('/login');
+    res.redirect('/auth/login');
   }
 });
 
 // Dedicated login route
-app.get('/login', (req, res) => {
+authRouter.get('/login', (req, res) => {
   const user = getUserFromRequest(req);
   if (user) {
-    return res.redirect('http://localhost:3001/home');
+    return res.redirect('/home');
   }
   // Show custom login page
   const html = `
@@ -706,7 +763,7 @@ app.get('/login', (req, res) => {
       status.textContent = '🔐 Authentication...';
       
       try {
-        const response = await fetch('/api/login', {
+        const response = await fetch('/auth/api/login', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -724,7 +781,7 @@ app.get('/login', (req, res) => {
           setTimeout(() => {
             const params = new URLSearchParams(window.location.search);
             const redirect = params.get('redirect');
-            const defaultUrl = '${process.env.FRONTEND_URL || "http://localhost:3001"}/home';
+            const defaultUrl = '${process.env.FRONTEND_URL || "http://localhost:3000"}/home';
             const targetUrl = redirect ? decodeURIComponent(redirect) : defaultUrl;
             window.location.href = targetUrl;
           }, 1000);
@@ -747,7 +804,7 @@ app.get('/login', (req, res) => {
 });
 
 // Bridge: create session via Playwright-authenticated context
-app.post('/api/bridge/sessions', async (req, res) => {
+authRouter.post('/api/bridge/sessions', async (req, res) => {
   let browser;
   try {
     if (!fs.existsSync(STORAGE_FILE)) {
@@ -755,7 +812,15 @@ app.post('/api/bridge/sessions', async (req, res) => {
     }
 
     // Launch a lightweight browser context with stored auth
-    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    browser = await chromium.launch({ 
+      headless: true, 
+      args: [
+        '--disable-blink-features=AutomationControlled',
+        '--no-sandbox',
+        '--disable-setuid-sandbox',
+        '--disable-dev-shm-usage'
+      ] 
+    });
     const context = await browser.newContext({ storageState: STORAGE_FILE });
 
     // Use context.request to leverage the authenticated browser context
@@ -788,7 +853,7 @@ app.post('/api/bridge/sessions', async (req, res) => {
 });
 
 // Login API endpoint - validates user and ensures HeyGen session
-app.post('/api/login', async (req, res) => {
+authRouter.post('/api/login', async (req, res) => {
   const { email, password } = req.body;
   
   if (!email || !password) {
@@ -868,7 +933,7 @@ app.post('/api/login', async (req, res) => {
 });
 
 // Check session status
-app.get('/api/status', (req, res) => {
+authRouter.get('/api/status', (req, res) => {
   const user = getUserFromRequest(req);
   res.json({ 
     userAuthenticated: !!user,
@@ -879,7 +944,7 @@ app.get('/api/status', (req, res) => {
 });
 
 // Logout endpoint
-app.post('/api/logout', (req, res) => {
+authRouter.post('/api/logout', (req, res) => {
   if (fs.existsSync(STORAGE_FILE)) {
     fs.unlinkSync(STORAGE_FILE);
   }
@@ -894,7 +959,7 @@ app.post('/api/logout', (req, res) => {
 });
 
 // Get cookies for proxy
-app.get('/api/cookies', (req, res) => {
+authRouter.get('/api/cookies', (req, res) => {
   if (isAuthenticated()) {
     res.json({ cookies: sessionCookies });
   } else {
@@ -903,7 +968,7 @@ app.get('/api/cookies', (req, res) => {
 });
 
 // Submit prompt via Playwright
-app.post('/api/submit-prompt', async (req, res) => {
+authRouter.post('/api/submit-prompt', async (req, res) => {
   const { prompt } = req.body;
   
   if (!prompt) {
@@ -929,7 +994,7 @@ app.post('/api/submit-prompt', async (req, res) => {
   // Send request to proxy server - the proxy has the single browser instance
   try {
     const requestContext = await pwRequest.newContext();
-    const proxyResponse = await requestContext.post('http://localhost:3000/submit-prompt', {
+    const proxyResponse = await requestContext.post('http://localhost:3000/proxy/submit-prompt', {
       data: { prompt },
       headers: { 'Content-Type': 'application/json' }
     });
@@ -950,28 +1015,10 @@ app.post('/api/submit-prompt', async (req, res) => {
     console.error('❌ Proxy server error:', proxyError.message);
     return res.json({ 
       success: false, 
-      error: 'Proxy server not available. Please ensure playwright-live-proxy.js is running on port 3000.' 
+      error: 'Proxy server not available. Please ensure the unified server is running.' 
     });
   }
 });
 
 // Export the auth server module
-export function createAuthServer(port = PORT) {
-  const server = app.listen(port, '0.0.0.0', () => {
-    loadSession();
-    
-    console.log('🔐 Auth Server started on port', port);
-    console.log(`   Login URL: http://localhost:${port}`);
-    console.log(`   Status: ${isAuthenticated() ? '✅ Authenticated' : '❌ Not authenticated'}`);
-  });
-  
-  return { app, server };
-}
-
-// Export utilities for other modules to use
-export { isAuthenticated, sessionCookies };
-
-// If run directly, start the server
-if (import.meta.url === `file://${process.argv[1]}`) {
-  createAuthServer();
-}
+export { authRouter, isAuthenticated, sessionCookies };

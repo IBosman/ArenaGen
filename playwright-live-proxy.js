@@ -17,11 +17,12 @@ const PORT = process.env.PORT || 3000;
 const COOKIES_FILE = path.join(__dirname, 'heygen-cookies.json');
 const TARGET = 'https://app.heygen.com';
 
+const proxyRouter = express.Router();
 const app = express();
-app.use(express.json());
+proxyRouter.use(express.json());
 
 // Add CORS middleware
-app.use((req, res, next) => {
+proxyRouter.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
   res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
   res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -31,7 +32,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(fileUpload({
+proxyRouter.use(fileUpload({
   useTempFiles: true,
   tempFileDir: '/tmp/',
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
@@ -85,7 +86,7 @@ async function initBrowser() {
   } else {
     console.log('ℹ️  No authentication cookies found yet');
     console.log('   Browser will start unauthenticated');
-    console.log('   👉 Please login at: http://localhost:3002 to create cookies');
+    console.log('   👉 Please login at: http://localhost:3000/auth to create cookies');
   }
   
   browser = await chromium.launch({
@@ -123,7 +124,7 @@ async function initBrowser() {
 }
 
 // Serve the control interface
-app.get('/', (req, res) => {
+proxyRouter.get('/', (req, res) => {
   res.send(`
     <!DOCTYPE html>
     <html>
@@ -275,7 +276,7 @@ app.get('/', (req, res) => {
 });
 
 // HTTP endpoint to submit initial prompt (called by auth server)
-app.post('/submit-prompt', async (req, res) => {
+proxyRouter.post('/submit-prompt', async (req, res) => {
   const { prompt } = req.body;
   
   if (!prompt) {
@@ -295,14 +296,14 @@ app.post('/submit-prompt', async (req, res) => {
       console.log('🌐 Navigating to home...');
       try {
         await activePage.goto('https://app.heygen.com/home', { 
-          waitUntil: 'domcontentloaded',
+          waitUntil: 'networkidle',
           timeout: 30000 
         });
       } catch (navError) {
         console.warn('⚠️  Navigation error (likely not authenticated):', navError.message);
         return res.json({ 
           success: false, 
-          error: 'Not authenticated. Please login first at http://localhost:3002 to create session cookies.' 
+          error: 'Not authenticated. Please login first at http://localhost:3000/auth to create session cookies.' 
         });
       }
     } else {
@@ -310,19 +311,22 @@ app.post('/submit-prompt', async (req, res) => {
     }
     
     
-    // Wait for input field
+    // Wait for input field to be ready
     console.log('⏳ Waiting for input field...');
     const inputSelector = 'div[role="textbox"][contenteditable="true"]';
-    await activePage.waitForSelector(inputSelector, { timeout: 60000 });
+    await activePage.waitForSelector(inputSelector, { state: 'visible', timeout: 60000 });
     
     // Type and submit
     console.log('⌨️  Typing prompt...');
     await activePage.click(inputSelector);
     await activePage.fill(inputSelector, prompt);
-    await activePage.waitForTimeout(500);
+    
+    // Wait for submit button to be enabled
+    console.log('⏳ Waiting for submit button...');
+    const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
+    await activePage.waitForSelector(buttonSelector, { state: 'visible', timeout: 5000 });
     
     console.log('🖱️  Clicking submit button...');
-    const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
     await activePage.click(buttonSelector);
     
     // Wait for navigation to agent session
@@ -346,7 +350,7 @@ app.post('/submit-prompt', async (req, res) => {
 });
 
 // HTTP endpoint to upload files
-app.post('/upload-files', async (req, res) => {
+proxyRouter.post('/upload-files', async (req, res) => {
   const files = req.files;
   
   if (!files || Object.keys(files).length === 0) {
@@ -376,14 +380,14 @@ app.post('/upload-files', async (req, res) => {
     // Navigate to home first
     console.log('🌐 Navigating to home...');
     await activePage.goto('https://app.heygen.com/home', { 
-      waitUntil: 'domcontentloaded',
-      timeout: 15000 
+      waitUntil: 'networkidle',
+      timeout: 30000 
     });
     console.log('✅ Navigated to home');
     
-    // Wait for page to fully load
-    console.log('⏳ Waiting for page to fully load...');
-    await activePage.waitForTimeout(2000);
+    // Wait for the chat input to be ready
+    console.log('⏳ Waiting for page to be ready...');
+    await activePage.waitForSelector('div[role="textbox"][contenteditable="true"]', { state: 'visible', timeout: 10000 });
     
     // Use DataTransfer API to set files on the hidden file input
     console.log('📤 Setting files via DataTransfer API...');
@@ -1103,23 +1107,16 @@ wss.on('connection', (ws) => {
   });
 });
 
-// Export the proxy server module
-export async function createProxyServer(port = PORT) {
-  await initBrowser();
-  
-  const httpServer = server.listen(port, '0.0.0.0', () => {
-    console.log('🎭 Proxy Server started on port', port);
-    console.log(`   Control Panel: http://localhost:${port}`);
-    console.log(`   Target: ${TARGET}`);
-    console.log('   Auth Status: ✅ Authenticated (Playwright)');
-  });
-  
-  return { app, server: httpServer, browser, context };
-}
+export { proxyRouter };
 
-// If run directly, start the server
+// If run directly, start the browser and server (legacy mode)
 if (import.meta.url === `file://${process.argv[1]}`) {
-  createProxyServer().catch(console.error);
+  initBrowser().then(() => {
+    const server = createServer(app);
+    server.listen(PORT, () => {
+      console.log(`Proxy server running on port ${PORT}`);
+    });
+  });
 }
 
 // Cleanup on exit

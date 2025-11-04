@@ -28,7 +28,7 @@ const GenerationPage = () => {
   const pollIntervalRef = useRef(null);
   const progressPollIntervalRef = useRef(null);
   const previousMessagesRef = useRef([]);
-  const fetchedVideoUrlsRef = useRef(new Set()); // Track which videos have been fetched
+  const videoUrlsRef = useRef(new Map()); // Track video URLs by message ID
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -121,12 +121,32 @@ const GenerationPage = () => {
         const newAgentCount = data.messages.filter(msg => msg.role === 'agent').length;
         const newAgentMessageAdded = newAgentCount > previousAgentCount;
         
-        // Sanitize all agent messages to remove HeyGen references
+        // Sanitize all agent messages to remove HeyGen references and restore video URLs
         const sanitizedMessages = data.messages.map(msg => {
+          let processedMsg = msg;
+          
+          // Sanitize agent messages
           if (msg.role === 'agent' && msg.text) {
-            return { ...msg, text: sanitizeMessage(msg.text) };
+            processedMsg = { ...msg, text: sanitizeMessage(msg.text) };
           }
-          return msg;
+          
+          // Restore video URL if we have one stored for this message
+          if (processedMsg.video && !processedMsg.video.videoUrl) {
+            const messageId = processedMsg.id || `${processedMsg.video.title || 'video'}_${processedMsg.timestamp || data.messages.indexOf(msg)}`;
+            const storedUrl = videoUrlsRef.current.get(messageId);
+            if (storedUrl) {
+              processedMsg = {
+                ...processedMsg,
+                video: {
+                  ...processedMsg.video,
+                  videoUrl: storedUrl.videoUrl,
+                  poster: storedUrl.poster || processedMsg.video.poster
+                }
+              };
+            }
+          }
+          
+          return processedMsg;
         });
         
         // Update messages
@@ -139,13 +159,11 @@ const GenerationPage = () => {
           setIsLoading(false);
         }
         
-        // Check if any message has a video without URL - fetch it (only once per video)
+        // Check if any message has a video without URL - fetch it
         const videoWithoutUrl = sanitizedMessages.find(msg => msg.video && !msg.video.videoUrl);
         if (videoWithoutUrl && videoWithoutUrl.video) {
-          const videoKey = `${videoWithoutUrl.video.title || 'unknown'}`;
-          if (!fetchedVideoUrlsRef.current.has(videoKey) && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            console.log('Video detected without URL, fetching...', videoKey);
-            fetchedVideoUrlsRef.current.add(videoKey); // Mark as fetched to prevent repeated requests
+          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+            console.log('🎬 Requesting video URL');
             wsRef.current.send(JSON.stringify({ action: 'get_video_url' }));
           }
         }
@@ -165,28 +183,50 @@ const GenerationPage = () => {
       
       // Handle get_video_url response
       if (data.action === 'get_video_url' && data.success && data.data) {
-        console.log('Video URL received:', data.data);
-        // Update the last message with video to include the URL
-        setMessages(prev => {
-          const updated = [...prev];
-          for (let i = updated.length - 1; i >= 0; i--) {
-            if (updated[i].video && !updated[i].video.videoUrl) {
-              updated[i] = {
-                ...updated[i],
-                video: {
-                  ...updated[i].video,
-                  videoUrl: data.data.videoUrl,
-                  poster: data.data.poster || updated[i].video.poster
+        const newUrl = data.data.videoUrl;
+        console.log('Video URL received:', newUrl);
+        
+        // Only process actual video URLs, not loading animations
+        if (newUrl && newUrl.startsWith('https://resource2.heygen.ai/video/')) {
+          // Find the message without video URL and store the URL
+          setMessages(prev => {
+            const updated = [...prev];
+            
+            for (let i = updated.length - 1; i >= 0; i--) {
+              if (updated[i].video && !updated[i].video.videoUrl) {
+                const messageId = updated[i].id || `${updated[i].video.title || 'video'}_${updated[i].timestamp || i}`;
+                const existingUrl = videoUrlsRef.current.get(messageId);
+                
+                // Only update if this is a different URL
+                if (!existingUrl || existingUrl.videoUrl !== newUrl) {
+                  // Store the URL
+                  videoUrlsRef.current.set(messageId, {
+                    videoUrl: newUrl,
+                    poster: data.data.poster
+                  });
+                  
+                  // Update the message
+                  updated[i] = {
+                    ...updated[i],
+                    video: {
+                      ...updated[i].video,
+                      videoUrl: newUrl,
+                      poster: data.data.poster || updated[i].video.poster
+                    }
+                  };
+                  console.log('✅ Updated message with actual video URL:', messageId);
+                } else {
+                  console.log('⏭️ Same URL already stored for message:', messageId);
                 }
-              };
-              // Update the tracking set to mark this video as having a URL
-              const videoKey = `${updated[i].video.title || 'unknown'}`;
-              fetchedVideoUrlsRef.current.delete(videoKey); // Remove from pending, it now has a URL
-              break;
+                break;
+              }
             }
-          }
-          return updated;
-        });
+            
+            return updated;
+          });
+        } else {
+          console.log('⏭️ Ignoring loading animation URL:', newUrl);
+        }
       }
       // Handle navigate response
       if (data.action === 'navigate' || (data.messages && !data.action && data.action !== 'get_messages')) {

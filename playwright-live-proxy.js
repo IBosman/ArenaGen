@@ -34,15 +34,26 @@ let activePage = null;
 
 // Initialize Playwright browser with authentication
 async function initBrowser() {
-  if (!fs.existsSync(COOKIES_FILE)) {
-    console.error('❌ No authentication cookies found!');
-    console.log('👉 Please login first at: http://localhost:3002\n');
-    process.exit(1);
-  }
+  let cookies = [];
+  let hasExistingCookies = false;
 
-  const cookieData = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
-  // Handle both old format (array) and new format (object with cookies, expiry, savedAt)
-  const cookies = Array.isArray(cookieData) ? cookieData : (cookieData.cookies || []);
+  // Try to load existing cookies if available
+  if (fs.existsSync(COOKIES_FILE)) {
+    try {
+      const cookieData = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+      // Handle both old format (array) and new format (object with cookies, expiry, savedAt)
+      cookies = Array.isArray(cookieData) ? cookieData : (cookieData.cookies || []);
+      hasExistingCookies = cookies.length > 0;
+      console.log('✅ Loaded existing HeyGen cookies');
+    } catch (err) {
+      console.warn('⚠️  Could not parse existing cookies:', err.message);
+      console.log('   Will start with fresh browser context');
+    }
+  } else {
+    console.log('ℹ️  No authentication cookies found yet');
+    console.log('   Browser will start unauthenticated');
+    console.log('   👉 Please login at: http://localhost:3002 to create cookies');
+  }
   
   browser = await chromium.launch({
     headless: false, // Run in headed mode so we can see it
@@ -70,8 +81,12 @@ async function initBrowser() {
   // Create the main page
   activePage = await context.newPage();
 
-  console.log('✅ Playwright browser initialized with authentication');
-  console.log('🎭 Browser window opened - user can interact directly!');
+  if (hasExistingCookies) {
+    console.log('✅ Playwright browser initialized with authentication');
+  } else {
+    console.log('✅ Playwright browser initialized (unauthenticated)');
+  }
+  console.log('🎭 Browser window opened - ready for interaction!');
 }
 
 // Serve the control interface
@@ -245,10 +260,18 @@ app.post('/submit-prompt', async (req, res) => {
     const currentUrl = activePage.url();
     if (!currentUrl.includes('app.heygen.com/home')) {
       console.log('🌐 Navigating to HeyGen home...');
-      await activePage.goto('https://app.heygen.com/home', { 
-        waitUntil: 'domcontentloaded',
-        timeout: 300000 
-      });
+      try {
+        await activePage.goto('https://app.heygen.com/home', { 
+          waitUntil: 'domcontentloaded',
+          timeout: 30000 
+        });
+      } catch (navError) {
+        console.warn('⚠️  Navigation error (likely not authenticated):', navError.message);
+        return res.json({ 
+          success: false, 
+          error: 'Not authenticated. Please login first at http://localhost:3002 to create HeyGen session cookies.' 
+        });
+      }
     } else {
       console.log('✅ Already on HeyGen home page');
     }

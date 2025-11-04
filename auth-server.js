@@ -195,7 +195,7 @@ async function refreshHeyGenSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: false,
+      headless: true,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
@@ -926,16 +926,16 @@ app.post('/api/submit-prompt', async (req, res) => {
   
   console.log('📝 Submitting prompt:', prompt);
   
-  // Instead of launching a new browser, send request to proxy server
-  // The proxy server already has a browser instance running
+  // Send request to proxy server - the proxy has the single browser instance
   try {
-    const proxyResponse = await fetch('http://localhost:3000/submit-prompt', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
+    const requestContext = await pwRequest.newContext();
+    const proxyResponse = await requestContext.post('http://localhost:3000/submit-prompt', {
+      data: { prompt },
+      headers: { 'Content-Type': 'application/json' }
     });
     
     const proxyData = await proxyResponse.json();
+    await requestContext.dispose();
     
     if (proxyData.success) {
       return res.json({
@@ -947,102 +947,10 @@ app.post('/api/submit-prompt', async (req, res) => {
       throw new Error(proxyData.error || 'Proxy request failed');
     }
   } catch (proxyError) {
-    console.log('⚠️  Proxy not available, falling back to direct browser');
-  }
-  
-  // Fallback: Launch browser directly (only if proxy is down)
-  let browser;
-  try {
-    browser = await chromium.launch({ 
-      headless: false,
-      args: ['--no-sandbox', '--disable-setuid-sandbox']
-    });
-    
-    const context = await browser.newContext({ storageState: STORAGE_FILE });
-    const page = await context.newPage();
-    
-    console.log('🌐 Navigating to HeyGen home...');
-    await page.goto('https://app.heygen.com/home', { 
-      waitUntil: 'domcontentloaded',
-      timeout: 300000 
-    });
-    
-    // Wait for the contenteditable div to be visible
-    console.log('⏳ Waiting for input field...');
-    const inputSelector = 'div[role="textbox"][contenteditable="true"]';
-    await page.waitForSelector(inputSelector, { timeout: 60000 });
-    
-    // Click and type into the contenteditable div
-    console.log('⌨️  Typing prompt...');
-    await page.click(inputSelector);
-    await page.fill(inputSelector, prompt);
-    
-    // Wait a moment for the text to be entered
-    await page.waitForTimeout(500);
-    
-    // Click the submit button
-    console.log('🖱️  Clicking submit button...');
-    const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
-    await page.click(buttonSelector);
-    
-    console.log('✅ Prompt submitted successfully!');
-    
-    // Wait for navigation to agent session page
-    console.log('⏳ Waiting for session page...');
-    await page.waitForURL(/\/agent\/.*/, { timeout: 300000 });
-    
-    const sessionUrl = page.url();
-    const sessionPath = sessionUrl.replace('https://app.heygen.com', '');
-    console.log('📍 Session URL:', sessionUrl);
-    
-    // Check for "Try again" button in case of failure
-    console.log('🔍 Checking for errors...');
-    const tryAgainButton = page.getByRole('button', { name: 'Try again' });
-    
-    // Wait a bit to see if the "Try again" button appears
-    await page.waitForTimeout(3000);
-    
-    const tryAgainVisible = await tryAgainButton.isVisible().catch(() => false);
-    
-    if (tryAgainVisible) {
-      console.log('⚠️  Generation failed, clicking "Try again"...');
-      await tryAgainButton.click();
-      console.log('🔄 Retrying generation...');
-    } else {
-      console.log('✅ Generation started successfully!');
-    }
-    
-    // Wait for agent response to appear in the chat
-    console.log('⏳ Waiting for agent response...');
-    try {
-      // Wait for at least one agent message to appear
-      await page.waitForSelector('div.tw-flex.tw-justify-start', { timeout: 10000 });
-      console.log('✅ Agent response detected!');
-    } catch (err) {
-      console.log('⚠️  No agent response yet, but continuing...');
-    }
-    
-    // Don't close browser - keep it open for user to see the result
-    // await browser.close();
-    
-    res.json({ 
-      success: true, 
-      message: 'Prompt submitted successfully',
-      retried: tryAgainVisible,
-      sessionUrl: sessionUrl,
-      sessionPath: sessionPath
-    });
-    
-  } catch (error) {
-    console.error('❌ Prompt submission error:', error.message);
-    
-    if (browser) {
-      // await browser.close();
-    }
-    
-    res.json({ 
+    console.error('❌ Proxy server error:', proxyError.message);
+    return res.json({ 
       success: false, 
-      error: error.message || 'Failed to submit prompt' 
+      error: 'Proxy server not available. Please ensure playwright-live-proxy.js is running on port 3000.' 
     });
   }
 });

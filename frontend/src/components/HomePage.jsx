@@ -39,7 +39,7 @@ const HomePage = () => {
         }
         console.log('✅ Files uploaded successfully');
         
-        // Wait a moment for file upload to complete on HeyGen
+        // Wait a moment for file upload to complete
         await new Promise(resolve => setTimeout(resolve, 2000));
       }
       

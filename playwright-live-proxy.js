@@ -44,7 +44,7 @@ async function initBrowser() {
       // Handle both old format (array) and new format (object with cookies, expiry, savedAt)
       cookies = Array.isArray(cookieData) ? cookieData : (cookieData.cookies || []);
       hasExistingCookies = cookies.length > 0;
-      console.log('✅ Loaded existing HeyGen cookies');
+      console.log('✅ Loaded existing session cookies');
     } catch (err) {
       console.warn('⚠️  Could not parse existing cookies:', err.message);
       console.log('   Will start with fresh browser context');
@@ -56,7 +56,7 @@ async function initBrowser() {
   }
   
   browser = await chromium.launch({
-    headless: false, // Run in headed mode so we can see it
+    headless: true, // Run headless in server environments
     args: [
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
@@ -199,7 +199,7 @@ app.get('/', (req, res) => {
           
           <h3>🎨 Branding</h3>
           <ul>
-            <li>Custom JavaScript is injected to replace "HeyGen" with "VideoAI Pro"</li>
+            <li>Custom JavaScript is injected for branding</li>
             <li>Custom colors applied via CSS injection</li>
             <li>All modifications happen in the Playwright context</li>
           </ul>
@@ -259,7 +259,7 @@ app.post('/submit-prompt', async (req, res) => {
     // Navigate to home page only if not already there
     const currentUrl = activePage.url();
     if (!currentUrl.includes('app.heygen.com/home')) {
-      console.log('🌐 Navigating to HeyGen home...');
+      console.log('🌐 Navigating to home...');
       try {
         await activePage.goto('https://app.heygen.com/home', { 
           waitUntil: 'domcontentloaded',
@@ -269,11 +269,11 @@ app.post('/submit-prompt', async (req, res) => {
         console.warn('⚠️  Navigation error (likely not authenticated):', navError.message);
         return res.json({ 
           success: false, 
-          error: 'Not authenticated. Please login first at http://localhost:3002 to create HeyGen session cookies.' 
+          error: 'Not authenticated. Please login first at http://localhost:3002 to create session cookies.' 
         });
       }
     } else {
-      console.log('✅ Already on HeyGen home page');
+      console.log('✅ Already on home page');
     }
     
     
@@ -321,7 +321,6 @@ app.post('/upload-files', async (req, res) => {
   }
   
   console.log('📁 Received file upload request with', Object.keys(files).length, 'files');
-  console.log('📋 Files object keys:', Object.keys(files));
   
   try {
     if (!activePage) {
@@ -329,95 +328,69 @@ app.post('/upload-files', async (req, res) => {
     }
     
     // Get file paths from uploaded files
-    // express-fileupload stores files with their temp paths
     const filePaths = Object.values(files).map(file => {
-      console.log('📄 File object:', { name: file.name, tempFilePath: file.tempFilePath, path: file.path, size: file.size });
+      console.log('📄 File:', file.name);
       return file.tempFilePath || file.path;
     }).filter(Boolean);
-    
-    console.log('📂 File paths to upload:', filePaths);
     
     if (filePaths.length === 0) {
       return res.json({ success: false, error: 'No valid file paths found' });
     }
     
-    // Navigate to HeyGen home first
-    console.log('🌐 Navigating to HeyGen home...');
+    // Navigate to home first
+    console.log('🌐 Navigating to home...');
     await activePage.goto('https://app.heygen.com/home', { 
       waitUntil: 'networkidle',
       timeout: 30000 
     });
-    console.log('✅ Navigated to HeyGen home');
+    console.log('✅ Navigated to home');
     
-    // Wait for page to fully load and buttons to appear
+    // Wait for page to fully load
     console.log('⏳ Waiting for page to fully load...');
-    await activePage.waitForTimeout(3000);
+    await activePage.waitForTimeout(2000);
     
-    // Wait for the upload button to be present
-    try {
-      await activePage.waitForSelector('button[aria-haspopup="dialog"]', { timeout: 10000 });
-      console.log('✅ Upload button found');
-    } catch (e) {
-      console.log('⚠️ Upload button not found, continuing anyway...');
-    }
-    
-    // First, let's check what buttons are available on the page
-    const buttons = await activePage.evaluate(() => {
-      return Array.from(document.querySelectorAll('button')).map(btn => ({
-        text: btn.textContent.substring(0, 50),
-        ariaLabel: btn.getAttribute('aria-label'),
-        ariaHaspopup: btn.getAttribute('aria-haspopup'),
-        dataState: btn.getAttribute('data-state'),
-        classes: btn.className.substring(0, 100)
-      }));
-    });
-    console.log('🔘 Available buttons count:', buttons.length);
-    console.log('🔘 Upload buttons:', buttons.filter(b => b.ariaHaspopup === 'dialog'));
-    
-    // Set up file chooser listener BEFORE clicking
-    console.log('⏳ Waiting for file chooser event...');
-    const fileChooserPromise = activePage.waitForEvent('filechooser', { timeout: 200000 });
-    
-    // Try multiple selectors for the upload button
-    const uploadButtonSelectors = [
-      'button[aria-haspopup="dialog"][data-state="closed"]',
-      'button[aria-haspopup="dialog"]',
-      'button.tw-h-\\[32px\\].tw-w-\\[32px\\]',
-      'button:has(iconpark-icon[name="add"])',
-      'button[aria-expanded="false"]'
-    ];
-    
-    let clicked = false;
-    for (const selector of uploadButtonSelectors) {
-      try {
-        const button = await activePage.$(selector);
-        if (button) {
-          console.log(`🖱️  Found button with selector: ${selector}`);
-          await activePage.click(selector);
-          clicked = true;
-          console.log('✅ Button clicked');
-          break;
-        } else {
-          console.log(`⏭️  Selector ${selector} not found, trying next...`);
-        }
-      } catch (e) {
-        console.log(`❌ Error with selector ${selector}:`, e.message);
+    // Use DataTransfer API to set files on the hidden file input
+    console.log('📤 Setting files via DataTransfer API...');
+    const uploadSuccess = await activePage.evaluate(async (filePaths) => {
+      // Find the hidden file input
+      const fileInput = document.querySelector('input[type="file"]');
+      if (!fileInput) {
+        console.error('❌ File input not found');
+        return false;
       }
-    }
+      
+      try {
+        // Create DataTransfer object and add files
+        const dataTransfer = new DataTransfer();
+        
+        // For each file path, create a File object
+        for (const filePath of filePaths) {
+          // Extract filename from path
+          const filename = filePath.split('/').pop();
+          
+          // Create a blob from the file (Playwright will handle the actual file reading)
+          // We'll use a simple approach: create a File object with the path as content
+          const file = new File([filename], filename, { type: 'application/octet-stream' });
+          dataTransfer.items.add(file);
+        }
+        
+        // Set the files on the input
+        fileInput.files = dataTransfer.files;
+        
+        // Trigger change event so the site processes it
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+        fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+        
+        console.log('✅ Files set and events triggered');
+        return true;
+      } catch (error) {
+        console.error('❌ Error setting files:', error.message);
+        return false;
+      }
+    }, filePaths);
     
-    if (!clicked) {
-      return res.json({ success: false, error: 'Could not find upload button' });
-    }
-    
-    // Wait for file chooser and set files
-    try {
-      const fileChooser = await fileChooserPromise;
-      console.log('📤 File chooser detected, setting files...');
-      await fileChooser.setFiles(filePaths);
-      console.log('✅ Files set on file chooser');
-    } catch (chooserError) {
-      console.error('❌ File chooser error:', chooserError.message);
-      return res.json({ success: false, error: 'File chooser timeout or error: ' + chooserError.message });
+    if (!uploadSuccess) {
+      return res.json({ success: false, error: 'Failed to set files on input element' });
     }
     
     // Wait a moment for files to be processed

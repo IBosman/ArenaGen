@@ -1,5 +1,5 @@
 // Authentication server with custom login UI
-// Handles user authentication and HeyGen session management
+// Handles user authentication and session management
 
 import express from 'express';
 import { chromium, request as pwRequest } from 'playwright';
@@ -139,7 +139,7 @@ function loadSession() {
         return false;
       }
       
-      console.log('✅ Loaded saved HeyGen session');
+      console.log('✅ Loaded saved session');
       return true;
     } catch (err) {
       console.error('❌ Error loading session:', err);
@@ -160,7 +160,7 @@ function saveSession(cookies, expiryHours = 24) {
     fs.writeFileSync(COOKIES_FILE, JSON.stringify(data, null, 2));
     sessionCookies = cookies;
     cookieExpiry = expiry;
-    console.log('✅ HeyGen session saved (expires in', expiryHours, 'hours)');
+    console.log('✅ Session saved (expires in', expiryHours, 'hours)');
   } catch (err) {
     console.error('❌ Error saving session:', err);
   }
@@ -174,15 +174,15 @@ function isAuthenticated() {
   
   // Check if cookies are expired
   if (cookieExpiry && Date.now() > cookieExpiry) {
-    console.log('⚠️  HeyGen cookies expired');
+    console.log('⚠️  Session expired');
     return false;
   }
   
   return true;
 }
 
-// Refresh HeyGen session using env credentials
-async function refreshHeyGenSession() {
+// Refresh session using env credentials
+async function refreshSession() {
   const email = process.env.HEYGEN_EMAIL;
   const password = process.env.HEYGEN_PASSWORD;
   
@@ -621,7 +621,7 @@ app.get('/login', (req, res) => {
               placeholder="Enter password"
               required
             >
-            <a href="https://app.heygen.com/forgot-password" target="_blank" class="forgot-password">Forgot password?</a>
+            <a href="#" class="forgot-password" style="pointer-events: none; opacity: 0.5;">Forgot password?</a>
           </div>
         </div>
         
@@ -703,7 +703,7 @@ app.get('/login', (req, res) => {
       loginBtn.classList.remove('active');
       loginBtn.innerHTML = '<span class="spinner"></span>Signing in...';
       status.className = 'status loading';
-      status.textContent = '🔐 Authenticating with HeyGen...';
+      status.textContent = '🔐 Authentication...';
       
       try {
         const response = await fetch('/api/login', {
@@ -816,7 +816,7 @@ app.post('/api/login', async (req, res) => {
     const needsRefresh = !cookieExpiry || (Date.now() + TWO_HOURS) >= cookieExpiry;
     
     if (needsRefresh) {
-      console.log('🔄 HeyGen cookies expiring soon or missing, refreshing...');
+      console.log('🔄 Session expiring soon or missing, refreshing...');
       try {
         await refreshHeyGenSession();
       } catch (refreshError) {
@@ -828,7 +828,7 @@ app.post('/api/login', async (req, res) => {
       }
     } else {
       const timeUntilExpiry = Math.floor((cookieExpiry - Date.now()) / (60 * 60 * 1000));
-      console.log(`✅ HeyGen cookies still valid (expires in ~${timeUntilExpiry} hours)`);
+      console.log(`✅ Session still valid (expires in ~${timeUntilExpiry} hours)`);
     }
     
     // Step 3: Issue browser token cookie
@@ -873,7 +873,7 @@ app.get('/api/status', (req, res) => {
   res.json({ 
     userAuthenticated: !!user,
     user: user ? { id: user.id, email: user.email, username: user.username, role: user.role } : null,
-    heygenAuthenticated: isAuthenticated(),
+    sessionAuthenticated: isAuthenticated(),
     cookies: sessionCookies ? sessionCookies.length : 0
   });
 });
@@ -902,7 +902,7 @@ app.get('/api/cookies', (req, res) => {
   }
 });
 
-// Submit prompt to HeyGen via Playwright
+// Submit prompt via Playwright
 app.post('/api/submit-prompt', async (req, res) => {
   const { prompt } = req.body;
   
@@ -912,14 +912,14 @@ app.post('/api/submit-prompt', async (req, res) => {
   
   // Check and refresh HeyGen session if needed
   if (!isAuthenticated()) {
-    console.log('⚠️  HeyGen session expired, refreshing...');
+    console.log('⚠️  Session expired, refreshing...');
     try {
       await refreshHeyGenSession();
     } catch (refreshError) {
-      console.error('❌ Failed to refresh HeyGen session:', refreshError.message);
+      console.error('❌ Failed to refresh session:', refreshError.message);
       return res.json({ 
         success: false, 
-        error: 'HeyGen session expired. Please check .env credentials.' 
+        error: 'Session expired. Please check .env credentials.' 
       });
     }
   }

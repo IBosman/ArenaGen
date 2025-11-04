@@ -34,10 +34,10 @@ const GenerationPage = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  // Sanitize message text by replacing HeyGen with ArenaGen (case-insensitive)
+  // Sanitize message text (no-op for now, kept for future use)
   const sanitizeMessage = (text) => {
     if (!text) return text;
-    return text.replace(/heygen/gi, 'ArenaGen');
+    return text;
   };
 
   useEffect(() => {
@@ -121,7 +121,7 @@ const GenerationPage = () => {
         const newAgentCount = data.messages.filter(msg => msg.role === 'agent').length;
         const newAgentMessageAdded = newAgentCount > previousAgentCount;
         
-        // Sanitize all agent messages to remove HeyGen references and restore video URLs
+        // Process agent messages and restore video URLs
         const sanitizedMessages = data.messages.map(msg => {
           let processedMsg = msg;
           
@@ -187,7 +187,7 @@ const GenerationPage = () => {
         console.log('Video URL received:', newUrl);
         
         // Only process actual video URLs, not loading animations
-        if (newUrl && newUrl.startsWith('https://resource2.heygen.ai/video/')) {
+        if (newUrl && newUrl.startsWith('https://resource2.')) {
           // Find the message without video URL and store the URL
           setMessages(prev => {
             const updated = [...prev];
@@ -253,7 +253,7 @@ const GenerationPage = () => {
           const match = data.url.match(/\/agent\/([^/?]+)/);
           if (match) {
             setSessionId(match[1]);
-            setSessionPath(data.url.replace('https://app.heygen.com', ''));
+            setSessionPath(data.url.replace(/https:\/\/[^/]+/, ''));
             console.log('Session loaded, starting polling...');
             
             // Poll immediately with multiple attempts to catch agent response

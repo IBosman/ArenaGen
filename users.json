@@ -1,0 +1,20 @@
+{
+  "users": [
+    {
+      "id": "1",
+      "username": "admin",
+      "email": "admin@arenagen.com",
+      "password": "admin123",
+      "createdAt": "2024-11-03T10:00:00.000Z",
+      "role": "admin"
+    },
+    {
+      "id": "2",
+      "username": "demo",
+      "email": "demo@arenagen.com",
+      "password": "Ar3n@G3n*!",
+      "createdAt": "2024-11-04T10:00:00.000Z",
+      "role": "admin"
+    }
+  ]
+}

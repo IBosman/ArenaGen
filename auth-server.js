@@ -195,7 +195,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      headless: false,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
     
@@ -755,7 +755,7 @@ app.post('/api/bridge/sessions', async (req, res) => {
     }
 
     // Launch a lightweight browser context with stored auth
-    browser = await chromium.launch({ headless: true, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
+    browser = await chromium.launch({ headless: false, args: ['--no-sandbox', '--disable-setuid-sandbox'] });
     const context = await browser.newContext({ storageState: STORAGE_FILE });
 
     // Use context.request to leverage the authenticated browser context
@@ -818,7 +818,7 @@ app.post('/api/login', async (req, res) => {
     if (needsRefresh) {
       console.log('🔄 Session expiring soon or missing, refreshing...');
       try {
-        await refreshHeyGenSession();
+        await refreshSession();
       } catch (refreshError) {
         console.error('❌ Failed to refresh session:', refreshError.message);
         return res.json({ 
@@ -914,7 +914,7 @@ app.post('/api/submit-prompt', async (req, res) => {
   if (!isAuthenticated()) {
     console.log('⚠️  Session expired, refreshing...');
     try {
-      await refreshHeyGenSession();
+      await refreshSession();
     } catch (refreshError) {
       console.error('❌ Failed to refresh session:', refreshError.message);
       return res.json({ 

@@ -29,6 +29,7 @@ const GenerationPage = () => {
   const progressPollIntervalRef = useRef(null);
   const previousMessagesRef = useRef([]);
   const videoUrlsRef = useRef(new Map()); // Track video URLs by message ID
+  const fileInputRef = useRef(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -560,12 +561,12 @@ const GenerationPage = () => {
 
           {/* Toolbar */}
           <div className="px-4 pb-4 flex items-center gap-3">
-            {/* Plus Button (disabled) */}
+            {/* Plus Button */}
             <button
               type="button"
-              disabled
-              title="Not currently available"
-              className="p-2 rounded-lg transition-colors cursor-not-allowed bg-transparent border border-gray-200 text-gray-400"
+              onClick={() => fileInputRef.current?.click()}
+              title="Attach files"
+              className="p-2 rounded-lg transition-colors hover:bg-gray-100 bg-transparent border border-gray-200 text-gray-600 hover:text-gray-900"
            >
               <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
@@ -574,6 +575,16 @@ const GenerationPage = () => {
           </div>
         </div>
       </div>
+      
+      {/* Hidden File Input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        multiple
+        accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+        onChange={() => {}}
+        className="hidden"
+      />
       
       {/* Video Modal */}
       {videoModal && (

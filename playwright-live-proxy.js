@@ -19,6 +19,18 @@ const TARGET = 'https://app.heygen.com';
 
 const app = express();
 app.use(express.json());
+
+// Add CORS middleware
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 app.use(fileUpload({
   useTempFiles: true,
   tempFileDir: '/tmp/',
@@ -31,6 +43,27 @@ const wss = new WebSocketServer({ server });
 let browser = null;
 let context = null;
 let activePage = null;
+
+// Helper function to determine MIME type from filename
+function getFileType(filename) {
+  const ext = filename.toLowerCase().split('.').pop();
+  const mimeTypes = {
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'gif': 'image/gif',
+    'webp': 'image/webp',
+    'mp4': 'video/mp4',
+    'mov': 'video/quicktime',
+    'avi': 'video/x-msvideo',
+    'webm': 'video/webm',
+    'pdf': 'application/pdf',
+    'doc': 'application/msword',
+    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'txt': 'text/plain'
+  };
+  return mimeTypes[ext] || 'application/octet-stream';
+}
 
 // Initialize Playwright browser with authentication
 async function initBrowser() {
@@ -56,7 +89,7 @@ async function initBrowser() {
   }
   
   browser = await chromium.launch({
-    headless: true, // Run headless in server environments
+    headless: false, // Run in headed mode to see browser window
     args: [
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
@@ -327,21 +360,24 @@ app.post('/upload-files', async (req, res) => {
       return res.json({ success: false, error: 'Browser not initialized' });
     }
     
-    // Get file paths from uploaded files
-    const filePaths = Object.values(files).map(file => {
-      console.log('📄 File:', file.name);
-      return file.tempFilePath || file.path;
-    }).filter(Boolean);
+    // Get file data with original names and paths
+    const fileData = Object.values(files).map(file => {
+      console.log('📄 File:', file.name, '(temp path:', file.tempFilePath, ')');
+      return {
+        name: file.name,
+        tempPath: file.tempFilePath || file.path
+      };
+    }).filter(f => f.tempPath);
     
-    if (filePaths.length === 0) {
+    if (fileData.length === 0) {
       return res.json({ success: false, error: 'No valid file paths found' });
     }
     
     // Navigate to home first
     console.log('🌐 Navigating to home...');
     await activePage.goto('https://app.heygen.com/home', { 
-      waitUntil: 'networkidle',
-      timeout: 30000 
+      waitUntil: 'domcontentloaded',
+      timeout: 15000 
     });
     console.log('✅ Navigated to home');
     
@@ -351,56 +387,98 @@ app.post('/upload-files', async (req, res) => {
     
     // Use DataTransfer API to set files on the hidden file input
     console.log('📤 Setting files via DataTransfer API...');
-    const uploadSuccess = await activePage.evaluate(async (filePaths) => {
+    console.log('📄 File data:', fileData);
+    
+    // Read actual file content and create proper File objects
+    const fs = await import('fs');
+    const uploadSuccess = await activePage.evaluate(async (filesWithContent) => {
+      console.log('📤 [Browser] Received', filesWithContent.length, 'files to upload');
+      console.log('📤 [Browser] File details:', filesWithContent.map(f => ({ name: f.name, type: f.type, size: f.content.length })));
+      
       // Find the hidden file input
+      await new Promise(resolve => setTimeout(resolve, 1000));
       const fileInput = document.querySelector('input[type="file"]');
       if (!fileInput) {
-        console.error('❌ File input not found');
+        console.error('❌ [Browser] File input not found');
         return false;
       }
+      console.log('✅ [Browser] File input found');
       
       try {
         // Create DataTransfer object and add files
         const dataTransfer = new DataTransfer();
         
-        // For each file path, create a File object
-        for (const filePath of filePaths) {
-          // Extract filename from path
-          const filename = filePath.split('/').pop();
-          
-          // Create a blob from the file (Playwright will handle the actual file reading)
-          // We'll use a simple approach: create a File object with the path as content
-          const file = new File([filename], filename, { type: 'application/octet-stream' });
+        // For each file, create a proper File object with actual content
+        for (const fileData of filesWithContent) {
+          // Convert the content object back to Uint8Array if needed
+          const contentArray = fileData.content.buffer ? new Uint8Array(fileData.content.buffer) : new Uint8Array(Object.values(fileData.content));
+          console.log(`📄 [Browser] Adding file: ${fileData.name} (type: ${fileData.type}, size: ${contentArray.length} bytes)`);
+          const blob = new Blob([contentArray], { type: fileData.type });
+          const file = new File([blob], fileData.name, { type: fileData.type });
+          console.log(`📄 [Browser] Created File object: size=${file.size}, type=${file.type}`);
           dataTransfer.items.add(file);
+          console.log(`✅ [Browser] File added to DataTransfer: ${fileData.name}`);
         }
+        
+        console.log(`📤 [Browser] DataTransfer has ${dataTransfer.items.length} files`);
         
         // Set the files on the input
         fileInput.files = dataTransfer.files;
+        console.log(`✅ [Browser] Set ${fileInput.files.length} files on input element`);
         
         // Trigger change event so the site processes it
         fileInput.dispatchEvent(new Event('change', { bubbles: true }));
         fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('✅ [Browser] Events triggered (change, input)');
         
-        console.log('✅ Files set and events triggered');
         return true;
       } catch (error) {
-        console.error('❌ Error setting files:', error.message);
+        console.error('❌ [Browser] Error setting files:', error.message);
         return false;
       }
-    }, filePaths);
+    }, 
+    // Map file data to include actual content and correct MIME type
+    fileData.map(f => {
+      const content = fs.readFileSync(f.tempPath);
+      const type = getFileType(f.name);
+      console.log(`📄 Read file: ${f.name} (${content.length} bytes, type: ${type})`);
+      // Convert Buffer to Uint8Array so it can be serialized properly
+      const contentArray = new Uint8Array(content);
+      return { name: f.name, content: contentArray, type };
+    }));
     
     if (!uploadSuccess) {
       return res.json({ success: false, error: 'Failed to set files on input element' });
     }
     
-    // Wait a moment for files to be processed
-    await activePage.waitForTimeout(2000);
+    // Wait for HeyGen to process and display the uploaded image
+    console.log('⏳ Waiting for HeyGen to process uploaded files...');
+    try {
+      // Wait for the attachment preview area to show up
+      const attachmentSelector = '.tw-flex.tw-items-stretch.tw-justify-start img.tw-object-cover';
+      await activePage.waitForSelector(attachmentSelector, { timeout: 15000 });
+      
+      const attachedImages = await activePage.$$eval(attachmentSelector, imgs => imgs.map(i => i.src));
+      console.log('🖼️  Attached images:', attachedImages);
+      
+      const attachedHeygenImages = attachedImages.filter(src => src.includes('heygen.ai'));
+      if (attachedHeygenImages.length === 0) {
+        throw new Error('No HeyGen-uploaded images found!');
+      }
+      
+      console.log('✅ Confirmed attached image:', attachedHeygenImages[0]);
+      console.log('✅ Total HeyGen images attached:', attachedHeygenImages.length);
+    } catch (waitError) {
+      console.warn('⚠️  Could not verify image attachment:', waitError.message);
+      console.log('⏳ Waiting additional time for processing...');
+      await activePage.waitForTimeout(3000);
+    }
     
     console.log('✅ Files uploaded successfully');
     res.json({
       success: true,
       message: 'Files uploaded successfully',
-      filesCount: filePaths.length
+      filesCount: fileData.length
     });
   } catch (error) {
     console.error('❌ Error uploading files:', error);

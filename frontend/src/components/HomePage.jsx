@@ -39,8 +39,9 @@ const HomePage = () => {
         }
         console.log('✅ Files uploaded successfully');
         
-        // Wait a moment for file upload to complete
-        await new Promise(resolve => setTimeout(resolve, 2000));
+        // Wait for HeyGen to process the uploaded file
+        console.log('⏳ Waiting for HeyGen to process file...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
       }
       
       // Then submit the prompt
@@ -186,12 +187,12 @@ const HomePage = () => {
                     className="hidden"
                   />
                   
-                  {/* Attach File Button (disabled) */}
+                  {/* Attach File Button */}
                   <button 
                     type="button"
-                    disabled
-                    title="Not currently available"
-                    className="p-2 rounded-lg transition-colors cursor-not-allowed bg-transparent border border-gray-200 text-gray-400"
+                    onClick={() => fileInputRef.current?.click()}
+                    title="Attach files"
+                    className="p-2 rounded-lg transition-colors hover:bg-gray-100 bg-transparent border border-gray-200 text-gray-600 hover:text-gray-900"
                   >
                     <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />

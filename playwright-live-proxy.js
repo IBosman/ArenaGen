@@ -553,10 +553,13 @@ proxyRouter.post('/upload-files', async (req, res) => {
       return res.json({ success: false, error: 'No valid file paths found' });
     }
     
+    await activePage.screenshot({ path: '/tmp/step0.png' });
+    console.log('📸 Screenshot saved: /tmp/step0.png');
+    
     // Navigate to home first
     console.log('🌐 Navigating to home...');
     await activePage.goto('https://app.heygen.com/home', { 
-      waitUntil: 'networkidle',
+      waitUntil: 'domcontentloaded',
       timeout: 30000 
     });
     console.log('✅ Navigated to home');

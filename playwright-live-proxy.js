@@ -167,6 +167,16 @@ async function initBrowser(httpServer = null) {
   // Create the main page
   activePage = await context.newPage();
 
+  // Navigate to HeyGen home to initialize the session
+  console.log('🌐 Navigating to HeyGen home...');
+  try {
+    await activePage.goto(TARGET, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    console.log('✅ Navigated to HeyGen home');
+  } catch (navError) {
+    console.warn('⚠️  Could not navigate to HeyGen home:', navError.message);
+    console.log('   Page will be blank until first user interaction');
+  }
+
   if (hasExistingCookies) {
     console.log('✅ Playwright browser initialized with authentication');
   } else {
@@ -231,6 +241,11 @@ async function reloadBrowserContext() {
 
     // Create new page
     activePage = await context.newPage();
+    
+    // Navigate to HeyGen home to initialize the session
+    console.log('🌐 Navigating to HeyGen home...');
+    await activePage.goto(TARGET, { waitUntil: 'domcontentloaded', timeout: 60000 });
+    console.log('✅ Navigated to HeyGen home');
     
     console.log('✅ Browser context reloaded with fresh authentication');
     return true;
@@ -462,16 +477,16 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     const inputSelector = 'div[role="textbox"][contenteditable="true"]';
     await activePage.waitForSelector(inputSelector, { state: 'visible', timeout: 60000 });
     
-
-    await activePage.waitForTimeout(60000);
+    // Small delay to ensure page is fully interactive
+    await activePage.waitForTimeout(1000);
     await activePage.screenshot({ path: '/tmp/step1.png' });
     console.log('📸 Screenshot saved: /tmp/step1.png');
     
     // Type and submit
     console.log('⌨️  Typing prompt...');
-    // await activePage.click(inputSelector);
     await activePage.locator(inputSelector).click({ force: true });
     await activePage.fill(inputSelector, prompt);
+    await activePage.waitForTimeout(500);
 
     await activePage.screenshot({ path: '/tmp/step2.png' });
     console.log('📸 Screenshot saved: /tmp/step2.png');
@@ -484,9 +499,9 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     await activePage.screenshot({ path: '/tmp/step3.png' });
     console.log('📸 Screenshot saved: /tmp/step3.png');
     
-    await activePage.waitForTimeout(60000);
     console.log('🖱️  Clicking submit button...');
     await activePage.locator(buttonSelector).click({ force: true });
+    await activePage.waitForTimeout(500);
     await activePage.screenshot({ path: '/tmp/step4.png' });
     console.log('📸 Screenshot saved: /tmp/step4.png');    
 

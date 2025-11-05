@@ -142,7 +142,7 @@ async function initBrowser(httpServer = null) {
   }
   
   browser = await chromium.launch({
-    headless: false, // Run headless for server environments
+    headless: true, // Run headless for server environments
     args: [
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',

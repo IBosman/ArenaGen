@@ -233,7 +233,7 @@ async function refreshSession() {
       ]
     });
     const context = await browser.newContext({
-      viewport: { width: 1024, height: 768 },
+      viewport: { width: 1920, height: 1080 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36',
     });
     

@@ -214,7 +214,7 @@ const HomePage = () => {
                     ref={fileInputRef}
                     type="file"
                     multiple
-                    accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+                    accept="image/*"
                     onChange={handleFileChange}
                     className="hidden"
                   />

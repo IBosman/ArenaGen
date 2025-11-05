@@ -332,7 +332,7 @@ const GenerationPage = () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ action: 'get_messages' }));
       }
-    }, 1000); // Poll every 1 second for faster response detection
+    }, 5000); // Poll every 5 seconds
   };
   
   const startProgressPolling = () => {
@@ -709,7 +709,7 @@ const GenerationPage = () => {
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,video/*,.pdf,.doc,.docx,.txt"
+        accept="image/*"
         onChange={handleFileChange}
         className="hidden"
       />

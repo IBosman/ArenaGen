@@ -206,7 +206,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -228,11 +228,46 @@ async function refreshSession() {
     
     const page = await context.newPage();
     
+    // Block video and media requests on login page to save CPU/memory
+    let isOnLoginPage = false;
+    await page.on('framenavigated', frame => {
+      if (frame === page.mainFrame()) {
+        isOnLoginPage = page.url().includes('/login');
+        if (isOnLoginPage) {
+          console.log('📱 On login page - blocking videos');
+        }
+      }
+    });
+    
+    await page.route('**/*', route => {
+      const requestUrl = route.request().url();
+      const resourceType = route.request().resourceType();
+      
+      // Block video/media on login page
+      if (isOnLoginPage && (
+        resourceType === 'media' || 
+        resourceType === 'video' ||
+        requestUrl.endsWith('.mp4') || 
+        requestUrl.endsWith('.webm') ||
+        requestUrl.endsWith('.m3u8') ||
+        requestUrl.includes('video') ||
+        requestUrl.includes('media')
+      )) {
+        console.log('🚫 Blocking:', resourceType, requestUrl);
+        route.abort();
+      } else {
+        route.continue();
+      }
+    });
+    
     console.log('📱 Navigating to HeyGen login...');
     await page.goto('https://app.heygen.com/login', { 
       waitUntil: 'domcontentloaded',
       timeout: 30000 
     });
+    
+    console.log('✅ Login page loaded (videos blocked)');
+    isOnLoginPage = true;
     
     // Step 1: Enter email + Continue
     console.log('📧 Entering email...');
@@ -244,6 +279,8 @@ async function refreshSession() {
     console.log('⏳ Waiting for password field...');
     await page.waitForSelector('input[type="password"]', { state: 'visible', timeout: 100000 });
     
+    // Still on login page, keep blocking
+    
     // Step 2: Enter password + Log in
     console.log('🔒 Entering password...');
     await page.getByPlaceholder('Enter password').fill(password);
@@ -253,6 +290,9 @@ async function refreshSession() {
     
     console.log('🖱️  Clicking login button...');
     await page.getByRole('button', { name: 'Log in' }).click();
+    
+    // Stop blocking videos after login
+    isOnLoginPage = false;
     
     // Wait for page load after login
     console.log('⏳ Waiting for page to load...');
@@ -831,7 +871,7 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: true, 
+      headless: false, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',

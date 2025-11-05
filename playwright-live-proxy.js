@@ -372,21 +372,32 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     
 
     await activePage.waitForTimeout(60000);
+    await activePage.screenshot({ path: '/tmp/step1.png' });
+    console.log('📸 Screenshot saved: /tmp/step1.png');
+    
     // Type and submit
     console.log('⌨️  Typing prompt...');
     // await activePage.click(inputSelector);
     await activePage.locator(inputSelector).click({ force: true });
     await activePage.fill(inputSelector, prompt);
+
+    await activePage.screenshot({ path: '/tmp/step2.png' });
+    console.log('📸 Screenshot saved: /tmp/step2.png');
     
     // Wait for submit button to be enabled
     console.log('⏳ Waiting for submit button...');
     const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
     await activePage.waitForSelector(buttonSelector, { state: 'visible', timeout: 5000 });
+
+    await activePage.screenshot({ path: '/tmp/step3.png' });
+    console.log('📸 Screenshot saved: /tmp/step3.png');
     
     await activePage.waitForTimeout(60000);
     console.log('🖱️  Clicking submit button...');
     await activePage.locator(buttonSelector).click({ force: true });
-    
+    await activePage.screenshot({ path: '/tmp/step4.png' });
+    console.log('📸 Screenshot saved: /tmp/step4.png');    
+
     // Wait for navigation to agent session
     console.log('⏳ Waiting for session page...');
     await activePage.waitForURL(/\/agent\/.*/, { timeout: 300000 });
@@ -545,6 +556,38 @@ proxyRouter.post('/upload-files', async (req, res) => {
   } catch (error) {
     console.error('❌ Error uploading files:', error);
     res.json({ success: false, error: error.message });
+  }
+});
+
+// Serve screenshots from /tmp directory
+proxyRouter.get('/screenshots/:filename', (req, res) => {
+  const filename = req.params.filename;
+  const filepath = path.join('/tmp', filename);
+  
+  if (!fs.existsSync(filepath)) {
+    return res.status(404).json({ error: 'Screenshot not found' });
+  }
+  
+  res.sendFile(filepath);
+});
+
+// List all screenshots in /tmp
+proxyRouter.get('/screenshots', (req, res) => {
+  try {
+    const files = fs.readdirSync('/tmp')
+      .filter(file => file.endsWith('.png') || file.endsWith('.jpg') || file.endsWith('.jpeg'))
+      .map(file => ({
+        name: file,
+        url: `/proxy/screenshots/${file}`,
+        path: path.join('/tmp', file),
+        size: fs.statSync(path.join('/tmp', file)).size,
+        modified: fs.statSync(path.join('/tmp', file)).mtime
+      }));
+    
+    res.json({ screenshots: files });
+  } catch (error) {
+    console.error('❌ Error listing screenshots:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

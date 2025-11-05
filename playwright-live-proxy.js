@@ -493,14 +493,14 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     
     // Wait for submit button to be enabled
     console.log('⏳ Waiting for submit button...');
-    const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
+    const buttonSelector = 'button[data-loading="false"].tw-bg-brand:not([disabled])';
     await activePage.waitForSelector(buttonSelector, { state: 'visible', timeout: 5000 });
 
     await activePage.screenshot({ path: '/tmp/step3.png' });
     console.log('📸 Screenshot saved: /tmp/step3.png');
     
     console.log('🖱️  Clicking submit button...');
-    await activePage.locator(buttonSelector).click({ force: true });
+    await activePage.locator(buttonSelector).first().click({ force: true });
     await activePage.waitForTimeout(500);
     await activePage.screenshot({ path: '/tmp/step4.png' });
     console.log('📸 Screenshot saved: /tmp/step4.png');    

@@ -365,7 +365,8 @@ async function refreshSession() {
     console.log('🔄 Reloading Playwright proxy browser context...');
     try {
       const requestContext = await pwRequest.newContext();
-      const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+      // Use 127.0.0.1 instead of localhost to avoid IPv6 issues
+      const baseUrl = process.env.BASE_URL || 'http://127.0.0.1:3000';
       const reloadResponse = await requestContext.post(`${baseUrl}/proxy/reload-context`, {
         headers: { 'Content-Type': 'application/json' }
       });

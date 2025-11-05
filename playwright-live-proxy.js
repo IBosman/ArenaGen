@@ -372,7 +372,8 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     
     // Type and submit
     console.log('⌨️  Typing prompt...');
-    await activePage.click(inputSelector);
+    // await activePage.click(inputSelector);
+    await activePage.locator(inputSelector).click({ force: true });
     await activePage.fill(inputSelector, prompt);
     
     // Wait for submit button to be enabled

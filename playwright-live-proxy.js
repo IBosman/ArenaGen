@@ -370,6 +370,8 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     const inputSelector = 'div[role="textbox"][contenteditable="true"]';
     await activePage.waitForSelector(inputSelector, { state: 'visible', timeout: 60000 });
     
+
+    await activePage.waitForTimeout(60000);
     // Type and submit
     console.log('⌨️  Typing prompt...');
     // await activePage.click(inputSelector);
@@ -381,8 +383,9 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
     await activePage.waitForSelector(buttonSelector, { state: 'visible', timeout: 5000 });
     
+    await activePage.waitForTimeout(60000);
     console.log('🖱️  Clicking submit button...');
-    await activePage.click(buttonSelector);
+    await activePage.locator(buttonSelector).click({ force: true });
     
     // Wait for navigation to agent session
     console.log('⏳ Waiting for session page...');

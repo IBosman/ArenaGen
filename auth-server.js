@@ -211,11 +211,18 @@ async function refreshSession() {
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
         '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage'
+        '--disable-dev-shm-usage',
+        '--disable-gpu',
+        '--disable-software-rasterizer',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--disable-extensions',
+        '--blink-settings=imagesEnabled=false'
       ]
     });
     const context = await browser.newContext({
-      viewport: { width: 1280, height: 800 },
+      viewport: { width: 1024, height: 768 },
       userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36',
     });
     

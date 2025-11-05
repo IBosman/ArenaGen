@@ -55,6 +55,65 @@ authRouter.use(cors({
 let sessionCookies = null;
 let cookieExpiry = null;
 
+// Load saved HeyGen session if exists
+function loadSession() {
+  if (fs.existsSync(COOKIES_FILE)) {
+    try {
+      const data = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+      sessionCookies = data.cookies || data;
+      cookieExpiry = data.expiry || null;
+      
+      // Check if cookies are expired
+      if (cookieExpiry && Date.now() > cookieExpiry) {
+        console.log('⚠️  Cookies expired, will refresh on next request');
+        return false;
+      }
+      
+      console.log('✅ Loaded saved session');
+      return true;
+    } catch (err) {
+      console.error('❌ Error loading session:', err);
+    }
+  }
+  return false;
+}
+
+// Save HeyGen session with expiry
+function saveSession(cookies, expiryHours = 24) {
+  try {
+    const expiry = Date.now() + (expiryHours * 60 * 60 * 1000);
+    const data = {
+      cookies: cookies,
+      expiry: expiry,
+      savedAt: new Date().toISOString()
+    };
+    fs.writeFileSync(COOKIES_FILE, JSON.stringify(data, null, 2));
+    sessionCookies = cookies;
+    cookieExpiry = expiry;
+    console.log('✅ Session saved (expires in', expiryHours, 'hours)');
+  } catch (err) {
+    console.error('❌ Error saving session:', err);
+  }
+}
+
+// Check if HeyGen session is authenticated and valid
+function isAuthenticated() {
+  if (!sessionCookies || sessionCookies.length === 0) {
+    return false;
+  }
+  
+  // Check if cookies are expired
+  if (cookieExpiry && Date.now() > cookieExpiry) {
+    console.log('⚠️  Session expired');
+    return false;
+  }
+  
+  return true;
+}
+
+// Load existing session on startup
+loadSession();
+
 // ============ Browser token helpers ============
 function base64url(input) {
   return Buffer.from(input).toString('base64').replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
@@ -136,61 +195,6 @@ function validateUser(email, password) {
   return user || null;
 }
 
-// Load saved HeyGen session if exists
-function loadSession() {
-  if (fs.existsSync(COOKIES_FILE)) {
-    try {
-      const data = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
-      sessionCookies = data.cookies || data;
-      cookieExpiry = data.expiry || null;
-      
-      // Check if cookies are expired
-      if (cookieExpiry && Date.now() > cookieExpiry) {
-        console.log('⚠️  Cookies expired, will refresh on next request');
-        return false;
-      }
-      
-      console.log('✅ Loaded saved session');
-      return true;
-    } catch (err) {
-      console.error('❌ Error loading session:', err);
-    }
-  }
-  return false;
-}
-
-// Save HeyGen session with expiry
-function saveSession(cookies, expiryHours = 24) {
-  try {
-    const expiry = Date.now() + (expiryHours * 60 * 60 * 1000);
-    const data = {
-      cookies: cookies,
-      expiry: expiry,
-      savedAt: new Date().toISOString()
-    };
-    fs.writeFileSync(COOKIES_FILE, JSON.stringify(data, null, 2));
-    sessionCookies = cookies;
-    cookieExpiry = expiry;
-    console.log('✅ Session saved (expires in', expiryHours, 'hours)');
-  } catch (err) {
-    console.error('❌ Error saving session:', err);
-  }
-}
-
-// Check if HeyGen session is authenticated and valid
-function isAuthenticated() {
-  if (!sessionCookies || sessionCookies.length === 0) {
-    return false;
-  }
-  
-  // Check if cookies are expired
-  if (cookieExpiry && Date.now() > cookieExpiry) {
-    console.log('⚠️  Session expired');
-    return false;
-  }
-  
-  return true;
-}
 
 // Refresh session using env credentials
 async function refreshSession() {
@@ -201,12 +205,19 @@ async function refreshSession() {
     throw new Error('HeyGen credentials not found in .env file');
   }
   
+  // Check if we already have valid cookies - if so, skip refresh
+  if (isAuthenticated()) {
+    const timeUntilExpiry = Math.floor((cookieExpiry - Date.now()) / (60 * 60 * 1000));
+    console.log(`✅ Valid session already exists (expires in ~${timeUntilExpiry} hours) - skipping refresh`);
+    return true;
+  }
+  
   console.log('🔄 Refreshing HeyGen session with credentials from .env');
   
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -871,7 +882,7 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: true, 
+      headless: false, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',

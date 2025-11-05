@@ -2,9 +2,8 @@ import express from 'express';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createServer } from 'http';
-import { WebSocketServer } from 'ws';
 import { authRouter } from './auth-server.js';
-import { proxyRouter } from './playwright-live-proxy.js';
+import { proxyRouter, initBrowser } from './playwright-live-proxy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,13 +26,19 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'frontend', 'build', 'index.html'));
 });
 
-server.listen(PORT, () => {
-  console.log(`╔════════════════════════════════════════════════════════╗`);
-  console.log(`║ 🚀 ArenaGen - Unified Server                          ║`);
-  console.log(`╠════════════════════════════════════════════════════════╣`);
-  console.log(`║ Server running on port ${PORT}                            ║`);
-  console.log(`║ Frontend: http://localhost:${PORT}                        ║`);
-  console.log(`║ Auth API: http://localhost:${PORT}/auth                   ║`);
-  console.log(`║ Proxy API: http://localhost:${PORT}/proxy                 ║`);
-  console.log(`╚════════════════════════════════════════════════════════╝`);
+// Initialize browser before starting server
+initBrowser(server).then(() => {
+  server.listen(PORT, () => {
+    console.log(`╔════════════════════════════════════════════════════════╗`);
+    console.log(`║ 🚀 ArenaGen - Unified Server                          ║`);
+    console.log(`╠════════════════════════════════════════════════════════╣`);
+    console.log(`║ Server running on port ${PORT}                            ║`);
+    console.log(`║ Frontend: http://localhost:${PORT}                        ║`);
+    console.log(`║ Auth API: http://localhost:${PORT}/auth                   ║`);
+    console.log(`║ Proxy API: http://localhost:${PORT}/proxy                 ║`);
+    console.log(`╚════════════════════════════════════════════════════════╝`);
+  });
+}).catch(err => {
+  console.error('❌ Failed to initialize browser:', err);
+  process.exit(1);
 });

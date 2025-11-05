@@ -84,6 +84,10 @@ const GenerationPage = () => {
       console.log('🔄 Starting continuous progress polling');
       startProgressPolling();
       
+      // Start message polling immediately
+      console.log('🔄 Starting continuous message polling');
+      startPolling();
+      
       // Load existing session from sessionStorage
       const savedSession = sessionStorage.getItem('currentSession');
       if (savedSession) {
@@ -272,8 +276,7 @@ const GenerationPage = () => {
               }, delay);
             });
             
-            // Start polling for new messages
-            startPolling();
+            // Polling is already running continuously from ws.onopen
             // Progress polling is already running continuously
           }
         }

@@ -38,8 +38,51 @@ proxyRouter.use(fileUpload({
   limits: { fileSize: 50 * 1024 * 1024 }, // 50MB limit
 }));
 
-const server = createServer(app);
-const wss = new WebSocketServer({ server });
+let server = createServer(app);
+let wss = null; // Will be initialized with the server instance
+
+// Function to set up WebSocket server
+function setupWebSocketServer(httpServer) {
+  server = httpServer;
+  wss = new WebSocketServer({ server });
+  console.log('✅ WebSocket server attached to HTTP server');
+  
+  // Set up WebSocket connection handler
+  setupWebSocketHandler();
+}
+
+// WebSocket handler setup (called after server is ready)
+function setupWebSocketHandler() {
+  if (!wss) {
+    console.error('❌ WebSocket server not initialized');
+    return;
+  }
+  
+  wss.on('connection', (ws) => {
+    console.log('🔌 Client connected via WebSocket');
+    
+    ws.on('message', async (message) => {
+      try {
+        const data = JSON.parse(message);
+        console.log('📨 Received command:', data);
+        
+        if (!activePage) {
+          ws.send(JSON.stringify({ error: 'No active page' }));
+          return;
+        }
+        
+        handleWebSocketMessage(ws, data);
+      } catch (error) {
+        console.error('❌ Error handling message:', error);
+        ws.send(JSON.stringify({ error: error.message }));
+      }
+    });
+    
+    ws.on('close', () => {
+      console.log('🔌 Client disconnected');
+    });
+  });
+}
 
 let browser = null;
 let context = null;
@@ -67,7 +110,16 @@ function getFileType(filename) {
 }
 
 // Initialize Playwright browser with authentication
-async function initBrowser() {
+async function initBrowser(httpServer = null) {
+  // If an HTTP server is provided, use it for WebSocket
+  if (httpServer) {
+    setupWebSocketServer(httpServer);
+  } else {
+    // Fallback: create our own server (for legacy standalone mode)
+    if (!wss) {
+      wss = new WebSocketServer({ server });
+    }
+  }
   let cookies = [];
   let hasExistingCookies = false;
 
@@ -90,7 +142,7 @@ async function initBrowser() {
   }
   
   browser = await chromium.launch({
-    headless: true, // Run headless for server environments
+    headless: false, // Run headless for server environments
     args: [
       '--disable-blink-features=AutomationControlled',
       '--disable-dev-shm-usage',
@@ -296,9 +348,11 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
       console.log('🌐 Navigating to home...');
       try {
         await activePage.goto('https://app.heygen.com/home', { 
-          waitUntil: 'networkidle',
+          waitUntil: 'domcontentloaded',
           timeout: 30000 
         });
+        // Wait a bit for React to render
+        await activePage.waitForTimeout(2000);
       } catch (navError) {
         console.warn('⚠️  Navigation error (likely not authenticated):', navError.message);
         return res.json({ 
@@ -490,21 +544,9 @@ proxyRouter.post('/upload-files', async (req, res) => {
   }
 });
 
-// WebSocket handler for browser control
-wss.on('connection', (ws) => {
-  console.log('🔌 Client connected via WebSocket');
-  
-  ws.on('message', async (message) => {
-    try {
-      const data = JSON.parse(message);
-      console.log('📨 Received command:', data);
-      
-      if (!activePage) {
-        ws.send(JSON.stringify({ error: 'No active page' }));
-        return;
-      }
-      
-      switch (data.action) {
+// Message handling logic
+async function handleWebSocketMessage(ws, data) {
+  switch (data.action) {
         case 'navigate':
           const targetUrl = TARGET + data.url;
           console.log(`🌐 Navigating to: ${targetUrl}`);
@@ -1096,18 +1138,9 @@ wss.on('connection', (ws) => {
         default:
           ws.send(JSON.stringify({ error: 'Unknown action' }));
       }
-    } catch (error) {
-      console.error('❌ Error handling message:', error);
-      ws.send(JSON.stringify({ error: error.message }));
-    }
-  });
-  
-  ws.on('close', () => {
-    console.log('🔌 Client disconnected');
-  });
-});
+}
 
-export { proxyRouter };
+export { proxyRouter, initBrowser, setupWebSocketServer };
 
 // If run directly, start the browser and server (legacy mode)
 if (import.meta.url === `file://${process.argv[1]}`) {

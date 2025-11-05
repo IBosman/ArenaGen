@@ -229,13 +229,13 @@ async function refreshSession() {
     
     // Step 1: Enter email + Continue
     console.log('📧 Entering email...');
-    await page.waitForSelector('input[placeholder="Enter email"]', { state: 'visible', timeout: 10000 });
+    await page.waitForSelector('input[placeholder="Enter email"]', { state: 'visible', timeout: 120000 });
     await page.getByPlaceholder('Enter email').fill(email);
     await page.getByRole('button', { name: 'Continue' }).click();
     
     // Wait for password field to appear
     console.log('⏳ Waiting for password field...');
-    await page.waitForSelector('input[type="password"]', { state: 'visible', timeout: 15000 });
+    await page.waitForSelector('input[type="password"]', { state: 'visible', timeout: 100000 });
     
     // Step 2: Enter password + Log in
     console.log('🔒 Entering password...');

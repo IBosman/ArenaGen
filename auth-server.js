@@ -361,6 +361,28 @@ async function refreshSession() {
     
     await browser.close();
     
+    // Reload the Playwright proxy browser context with fresh cookies
+    console.log('🔄 Reloading Playwright proxy browser context...');
+    try {
+      const requestContext = await pwRequest.newContext();
+      const baseUrl = process.env.BASE_URL || 'http://localhost:3000';
+      const reloadResponse = await requestContext.post(`${baseUrl}/proxy/reload-context`, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const reloadData = await reloadResponse.json();
+      await requestContext.dispose();
+      
+      if (reloadData.success) {
+        console.log('✅ Playwright proxy browser context reloaded with fresh cookies');
+      } else {
+        console.warn('⚠️  Failed to reload browser context:', reloadData.error);
+      }
+    } catch (reloadError) {
+      console.warn('⚠️  Could not reload browser context:', reloadError.message);
+      console.log('   Browser will reload cookies on next restart');
+    }
+    
     return true;
   } catch (error) {
     console.error('❌ Failed to refresh HeyGen session:', error.message);

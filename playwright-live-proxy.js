@@ -175,6 +175,98 @@ async function initBrowser(httpServer = null) {
   console.log('🎭 Browser window opened - ready for interaction!');
 }
 
+// Reload browser context with fresh cookies (called after login)
+async function reloadBrowserContext() {
+  console.log('🔄 Reloading browser context with fresh cookies...');
+  
+  let cookies = [];
+  let hasExistingCookies = false;
+
+  // Load fresh cookies from file
+  if (fs.existsSync(COOKIES_FILE)) {
+    try {
+      const cookieData = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
+      cookies = Array.isArray(cookieData) ? cookieData : (cookieData.cookies || []);
+      hasExistingCookies = cookies.length > 0;
+      console.log('✅ Loaded fresh session cookies:', cookies.length, 'cookies');
+    } catch (err) {
+      console.warn('⚠️  Could not parse cookies:', err.message);
+      return false;
+    }
+  } else {
+    console.log('⚠️  No cookies file found');
+    return false;
+  }
+
+  if (!hasExistingCookies) {
+    console.log('⚠️  No cookies to reload');
+    return false;
+  }
+
+  try {
+    // Close existing page and context
+    if (activePage) {
+      await activePage.close();
+      console.log('✅ Closed old page');
+    }
+    if (context) {
+      await context.close();
+      console.log('✅ Closed old context');
+    }
+
+    // Create new context with fresh cookies
+    context = await browser.newContext({
+      storageState: {
+        cookies: cookies,
+        origins: []
+      },
+      userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      viewport: { width: 1920, height: 1080 },
+      locale: 'en-US',
+      timezoneId: 'America/New_York',
+      permissions: ['clipboard-read', 'clipboard-write'],
+      bypassCSP: true,
+      ignoreHTTPSErrors: true
+    });
+
+    // Create new page
+    activePage = await context.newPage();
+    
+    console.log('✅ Browser context reloaded with fresh authentication');
+    return true;
+  } catch (error) {
+    console.error('❌ Error reloading browser context:', error);
+    return false;
+  }
+}
+
+// Endpoint to reload browser context (called by auth-server after login)
+proxyRouter.post('/reload-context', async (req, res) => {
+  console.log('📥 Received request to reload browser context');
+  
+  try {
+    const success = await reloadBrowserContext();
+    
+    if (success) {
+      res.json({ 
+        success: true, 
+        message: 'Browser context reloaded with fresh cookies' 
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        error: 'Failed to reload context - no valid cookies found' 
+      });
+    }
+  } catch (error) {
+    console.error('❌ Error in reload-context endpoint:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
+    });
+  }
+});
+
 // Serve the control interface
 proxyRouter.get('/', (req, res) => {
   res.send(`

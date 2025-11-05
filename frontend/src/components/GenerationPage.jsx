@@ -360,7 +360,7 @@ const GenerationPage = () => {
   };
 
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if ((!inputValue.trim() && attachedFiles.length === 0) || isLoading) return;
 
     const userMessage = inputValue.trim();
     setInputValue('');
@@ -374,15 +374,73 @@ const GenerationPage = () => {
     });
 
     try {
-      // If we have an active session, use send_message action
+      // If we have an active session, upload files first if any
       if (sessionPath && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        // Upload files if attached
+        if (attachedFiles.length > 0) {
+          console.log('📤 Uploading', attachedFiles.length, 'files...');
+          for (const file of attachedFiles) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+              const base64Content = e.target.result;
+              wsRef.current.send(JSON.stringify({
+                action: 'upload_files',
+                files: [{
+                  name: file.name,
+                  content: base64Content,
+                  type: file.type
+                }]
+              }));
+              console.log('📤 Uploaded file:', file.name);
+            };
+            reader.readAsDataURL(file);
+          }
+          // Clear attached files after upload
+          setAttachedFiles([]);
+          // Wait a bit for files to be processed
+          await new Promise(resolve => setTimeout(resolve, 2000));
+        }
+        
         console.log('Sending message to existing session');
         wsRef.current.send(JSON.stringify({ 
           action: 'send_message', 
           message: userMessage 
         }));
       } else {
-        // No session yet, create a new one via backend
+        // No session yet, upload files first if any
+        if (attachedFiles.length > 0) {
+          console.log('📤 Uploading', attachedFiles.length, 'files to home page...');
+          const fileFormData = new FormData();
+          attachedFiles.forEach((file, index) => {
+            fileFormData.append(`file_${index}`, file);
+          });
+          
+          const baseUrl = window.location.origin;
+          const PROXY_HTTP_BASE = process.env.REACT_APP_PROXY_HTTP_BASE || `${baseUrl}/proxy`;
+          const uploadResponse = await fetch(`${PROXY_HTTP_BASE}/upload-files`, {
+            method: 'POST',
+            body: fileFormData
+          });
+          
+          const uploadData = await uploadResponse.json();
+          if (!uploadData.success) {
+            console.error('File upload failed:', uploadData.error);
+            setMessages(prev => [...prev, { 
+              role: 'agent', 
+              text: `File upload failed: ${uploadData.error}` 
+            }]);
+            setIsLoading(false);
+            return;
+          }
+          console.log('✅ Files uploaded successfully');
+          setAttachedFiles([]);
+          
+          // Wait for HeyGen to process the uploaded file
+          console.log('⏳ Waiting for HeyGen to process file...');
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+        
+        // Create a new session via backend
         console.log('Creating new session');
         const baseUrl = window.location.origin;
         const response = await fetch(`${baseUrl}/auth/api/submit-prompt`, {
@@ -457,6 +515,14 @@ const GenerationPage = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Header with Logo */}
+      <header className="sticky top-0 bg-white border-b border-gray-200 px-8 py-4 flex items-center gap-2 z-50">
+        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
+          <span className="text-white font-bold text-sm">A</span>
+        </div>
+        <span className="text-xl font-bold text-gray-900">ArenaGen</span>
+      </header>
+      
       {/* Chat Messages Area */}
       <div className="flex-1 overflow-y-auto p-8 pb-32">
         <div className="max-w-3xl mx-auto space-y-6">
@@ -569,7 +635,7 @@ const GenerationPage = () => {
             {/* Send Button */}
             <button
               onClick={handleSendMessage}
-              disabled={isLoading || !inputValue.trim()}
+              disabled={isLoading || (!inputValue.trim() && attachedFiles.length === 0)}
               className="absolute right-6 top-1/2 transform -translate-y-1/2 w-8 h-8 rounded-full bg-black text-white hover:bg-gray-800 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

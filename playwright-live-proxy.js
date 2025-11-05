@@ -575,14 +575,22 @@ proxyRouter.post('/upload-files', async (req, res) => {
       console.log('📤 [Browser] Received', filesWithContent.length, 'files to upload');
       console.log('📤 [Browser] File details:', filesWithContent.map(f => ({ name: f.name, type: f.type, size: f.content.length })));
       
-      // Find the hidden file input
+      // Find the hidden file input (image files only)
       await new Promise(resolve => setTimeout(resolve, 1000));
-      const fileInput = document.querySelector('input[type="file"]');
+      const fileInput = document.querySelector('input[type="file"][accept*="image"]') || 
+                        document.querySelector('input[type="file"][accept*="jpg"]') ||
+                        document.querySelector('input[type="file"][accept*="png"]') ||
+                        document.querySelector('input[type="file"]');
       if (!fileInput) {
         console.error('❌ [Browser] File input not found');
         return false;
       }
       console.log('✅ [Browser] File input found');
+      
+      // Restrict file picker to images only
+      const originalAccept = fileInput.accept;
+      fileInput.accept = '.jpg,.jpeg,.png,.gif,.webp,.svg,.heic';
+      console.log('📄 [Browser] Restricted accept attribute to images only (was: ' + originalAccept + ')');
       
       try {
         // Create DataTransfer object and add files
@@ -652,6 +660,133 @@ proxyRouter.post('/upload-files', async (req, res) => {
       console.warn('⚠️  Could not verify image attachment:', waitError.message);
       console.log('⏳ Waiting additional time for processing...');
       await activePage.waitForTimeout(3000);
+    }
+    
+    console.log('✅ Files uploaded successfully');
+    res.json({
+      success: true,
+      message: 'Files uploaded successfully',
+      filesCount: fileData.length
+    });
+  } catch (error) {
+    console.error('❌ Error uploading files:', error);
+    res.json({ success: false, error: error.message });
+  }
+});
+
+// HTTP endpoint to upload files on /generate (agent session) page
+proxyRouter.post('/upload-files-generate', async (req, res) => {
+  const files = req.files;
+  
+  if (!files || Object.keys(files).length === 0) {
+    return res.json({ success: false, error: 'No files provided' });
+  }
+  
+  console.log('📁 Received file upload request for /generate with', Object.keys(files).length, 'files');
+  
+  try {
+    if (!activePage) {
+      return res.json({ success: false, error: 'Browser not initialized' });
+    }
+    
+    // Get file data with original names and paths
+    const fileData = Object.values(files).map(file => {
+      console.log('📄 File:', file.name, '(temp path:', file.tempFilePath, ')');
+      return {
+        name: file.name,
+        tempPath: file.tempFilePath || file.path
+      };
+    }).filter(f => f.tempPath);
+    
+    if (fileData.length === 0) {
+      return res.json({ success: false, error: 'No valid file paths found' });
+    }
+    
+    // Check if we're on an agent session page
+    const currentUrl = activePage.url();
+    if (!currentUrl.includes('/agent/')) {
+      return res.json({ success: false, error: 'Not on an agent session page. Current URL: ' + currentUrl });
+    }
+    
+    console.log('✅ On agent session page:', currentUrl);
+    
+    // Wait for the chat input to be ready
+    console.log('⏳ Waiting for page to be ready...');
+    await activePage.waitForSelector('div[role="textbox"][contenteditable="true"]', { state: 'visible', timeout: 10000 });
+    
+    // Use DataTransfer API to set files on the hidden file input
+    console.log('📤 Setting files via DataTransfer API...');
+    
+    // Read actual file content and create proper File objects
+    const fs = await import('fs');
+    const uploadSuccess = await activePage.evaluate(async (filesWithContent) => {
+      console.log('📤 [Browser] Received', filesWithContent.length, 'files to upload');
+      console.log('📤 [Browser] File details:', filesWithContent.map(f => ({ name: f.name, type: f.type, size: f.content.length })));
+      
+      // Find the hidden file input
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      const fileInput = document.querySelector('input[type="file"][accept*=".mp4"]');
+      if (!fileInput) {
+        console.error('❌ [Browser] File input not found');
+        return false;
+      }
+      console.log('✅ [Browser] File input found');
+      
+      try {
+        // Create DataTransfer object and add files
+        const dataTransfer = new DataTransfer();
+        
+        // For each file, create a proper File object with actual content
+        for (const fileData of filesWithContent) {
+          // Convert the content object back to Uint8Array if needed
+          const contentArray = fileData.content.buffer ? new Uint8Array(fileData.content.buffer) : new Uint8Array(Object.values(fileData.content));
+          console.log(`📄 [Browser] Adding file: ${fileData.name} (type: ${fileData.type}, size: ${contentArray.length} bytes)`);
+          const blob = new Blob([contentArray], { type: fileData.type });
+          const file = new File([blob], fileData.name, { type: fileData.type });
+          console.log(`📄 [Browser] Created File object: size=${file.size}, type=${file.type}`);
+          dataTransfer.items.add(file);
+          console.log(`✅ [Browser] File added to DataTransfer: ${fileData.name}`);
+        }
+        
+        console.log(`📤 [Browser] DataTransfer has ${dataTransfer.items.length} files`);
+        
+        // Set the files on the input
+        fileInput.files = dataTransfer.files;
+        console.log(`✅ [Browser] Set ${fileInput.files.length} files on input element`);
+        
+        // Trigger change event so the site processes it
+        fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+        fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+        console.log('✅ [Browser] Events triggered (change, input)');
+        
+        return true;
+      } catch (error) {
+        console.error('❌ [Browser] Error setting files:', error.message);
+        return false;
+      }
+    }, 
+    // Map file data to include actual content and correct MIME type
+    fileData.map(f => {
+      const content = fs.readFileSync(f.tempPath);
+      const type = getFileType(f.name);
+      console.log(`📄 Read file: ${f.name} (${content.length} bytes, type: ${type})`);
+      // Convert Buffer to Uint8Array so it can be serialized properly
+      const contentArray = new Uint8Array(content);
+      return { name: f.name, content: contentArray, type };
+    }));
+    
+    if (!uploadSuccess) {
+      return res.json({ success: false, error: 'Failed to set files on input element' });
+    }
+    
+    // Wait for HeyGen to process and display the uploaded file
+    console.log('⏳ Waiting for HeyGen to process uploaded files...');
+    try {
+      // Wait a bit for processing
+      await activePage.waitForTimeout(2000);
+      console.log('✅ Files should be attached');
+    } catch (waitError) {
+      console.warn('⚠️  Could not verify file attachment:', waitError.message);
     }
     
     console.log('✅ Files uploaded successfully');
@@ -1156,6 +1291,100 @@ async function handleWebSocketMessage(ws, data) {
             ws.send(JSON.stringify({ success: true, action: 'get_video_url', data: videoData }));
           } catch (err) {
             ws.send(JSON.stringify({ success: false, action: 'get_video_url', error: err.message }));
+          }
+          break;
+          
+        case 'upload_files':
+          console.log('📁 Uploading files to agent session');
+          try {
+            const currentUrl = activePage.url();
+            if (!currentUrl.includes('/agent/')) {
+              ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'Not on agent session page' }));
+              break;
+            }
+            
+            const files = data.files; // Array of {name, content (base64), type}
+            if (!files || files.length === 0) {
+              ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'No files provided' }));
+              break;
+            }
+            
+            console.log(`📤 Uploading ${files.length} files via WebSocket`);
+            
+            // Wait for the chat input to be ready
+            await activePage.waitForSelector('div[role="textbox"][contenteditable="true"]', { state: 'visible', timeout: 10000 });
+            
+            // Use DataTransfer API to set files on the hidden file input
+            const uploadSuccess = await activePage.evaluate(async (filesData) => {
+              console.log('📤 [Browser] Received', filesData.length, 'files to upload');
+              
+              // Find the hidden file input (image files only)
+              await new Promise(resolve => setTimeout(resolve, 1000));
+              const fileInput = document.querySelector('input[type="file"][accept*="image"]') || 
+                                document.querySelector('input[type="file"][accept*="jpg"]') ||
+                                document.querySelector('input[type="file"][accept*="png"]') ||
+                                document.querySelector('input[type="file"]');
+              if (!fileInput) {
+                console.error('❌ [Browser] File input not found');
+                return false;
+              }
+              console.log('✅ [Browser] File input found');
+              
+              // Restrict file picker to images only
+              const originalAccept = fileInput.accept;
+              fileInput.accept = '.jpg,.jpeg,.png,.gif,.webp,.svg,.heic';
+              console.log('📄 [Browser] Restricted accept attribute to images only (was: ' + originalAccept + ')');
+              
+              try {
+                // Create DataTransfer object and add files
+                const dataTransfer = new DataTransfer();
+                
+                // For each file, create a proper File object
+                for (const fileData of filesData) {
+                  // Decode base64 content
+                  const base64Data = fileData.content.split(',')[1] || fileData.content;
+                  const binaryString = atob(base64Data);
+                  const bytes = new Uint8Array(binaryString.length);
+                  for (let i = 0; i < binaryString.length; i++) {
+                    bytes[i] = binaryString.charCodeAt(i);
+                  }
+                  
+                  console.log(`📄 [Browser] Adding file: ${fileData.name} (type: ${fileData.type}, size: ${bytes.length} bytes)`);
+                  const blob = new Blob([bytes], { type: fileData.type });
+                  const file = new File([blob], fileData.name, { type: fileData.type });
+                  dataTransfer.items.add(file);
+                  console.log(`✅ [Browser] File added: ${fileData.name}`);
+                }
+                
+                // Set the files on the input
+                fileInput.files = dataTransfer.files;
+                console.log(`✅ [Browser] Set ${fileInput.files.length} files on input element`);
+                
+                // Trigger change event
+                fileInput.dispatchEvent(new Event('change', { bubbles: true }));
+                fileInput.dispatchEvent(new Event('input', { bubbles: true }));
+                console.log('✅ [Browser] Events triggered');
+                
+                return true;
+              } catch (error) {
+                console.error('❌ [Browser] Error setting files:', error.message);
+                return false;
+              }
+            }, files);
+            
+            if (!uploadSuccess) {
+              ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'Failed to set files on input element' }));
+              break;
+            }
+            
+            // Wait for processing
+            await activePage.waitForTimeout(2000);
+            
+            console.log('✅ Files uploaded successfully via WebSocket');
+            ws.send(JSON.stringify({ success: true, action: 'upload_files', filesCount: files.length }));
+          } catch (err) {
+            console.error('❌ Error uploading files:', err);
+            ws.send(JSON.stringify({ success: false, action: 'upload_files', error: err.message }));
           }
           break;
           

@@ -109,7 +109,17 @@ const HomePage = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="absolute top-0 right-0 p-6 flex items-center gap-4">
+      <header className="sticky top-0 left-0 right-0 p-6 flex items-center justify-between bg-white z-50">
+        {/* Logo */}
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
+            <span className="text-white font-bold text-sm">A</span>
+          </div>
+          <span className="text-xl font-bold text-gray-900">ArenaGen</span>
+        </div>
+        
+        {/* Right side buttons */}
+        <div className="flex items-center gap-4">
         <button className="flex items-center gap-2 text-gray-700 hover:text-gray-900 text-sm">
           <span>EN</span>
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -119,6 +129,7 @@ const HomePage = () => {
         <button className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
           Community
         </button>
+        </div>
       </header>
 
       {/* Main Content */}

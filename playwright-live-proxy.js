@@ -1058,7 +1058,28 @@ async function handleWebSocketMessage(ws, data) {
                   if (isUser) {
                     const userBubble = row.querySelector('.tw-bg-fill-block');
                     const text = userBubble ? userBubble.innerText.trim() : '';
-                    return text ? { role: 'user', text } : null;
+                    
+                    // Check for attached images in user message
+                    const attachedImages = [];
+                    // Be permissive: match any HeyGen-hosted image (e.g., resource2.heygen.ai, cdn variants)
+                    const imageElements = row.querySelectorAll('img[src*="heygen"]');
+                    imageElements.forEach(img => {
+                      if (img.src) {
+                        attachedImages.push({
+                          url: img.src,
+                          alt: img.alt || 'User attached image'
+                        });
+                      }
+                    });
+                    
+                    // Return user message with text and/or images
+                    if (text || attachedImages.length > 0) {
+                      const message = { role: 'user' };
+                      if (text) message.text = text;
+                      if (attachedImages.length > 0) message.images = attachedImages;
+                      return message;
+                    }
+                    return null;
                   }
 
                   // agent - get main reply, skip reasoning
@@ -1144,7 +1165,46 @@ async function handleWebSocketMessage(ws, data) {
                   return null;
                 }).filter(Boolean);
 
-                return { messages };
+                // Merge a preceding image-only user message with the immediately following user text message
+                const merged = [];
+                for (let i = 0; i < messages.length; i++) {
+                  const m = messages[i];
+                  if (
+                    m && m.role === 'user' && !m.text && Array.isArray(m.images) && m.images.length > 0
+                  ) {
+                    const next = messages[i + 1];
+                    if (next && next.role === 'user' && next.text) {
+                      const combinedImages = [...(next.images || [])];
+                      const existingUrls = new Set(combinedImages.map(img => img && img.url).filter(Boolean));
+                      for (const img of m.images) {
+                        if (img && img.url && !existingUrls.has(img.url)) {
+                          combinedImages.push(img);
+                          existingUrls.add(img.url);
+                        }
+                      }
+                      merged.push({ ...next, images: combinedImages });
+                      i++; // Skip the next item since it's merged
+                      continue;
+                    }
+                  }
+                  merged.push(m);
+                }
+
+                // Dedupe any remaining identical image-only user messages by URL set
+                const seenImageOnly = new Set();
+                const deduped = [];
+                for (const m of merged) {
+                  if (m && m.role === 'user' && !m.text && Array.isArray(m.images) && m.images.length > 0) {
+                    const key = 'user-images:' + m.images.map(img => img && img.url).filter(Boolean).sort().join('|');
+                    if (seenImageOnly.has(key)) {
+                      continue;
+                    }
+                    seenImageOnly.add(key);
+                  }
+                  deduped.push(m);
+                }
+
+                return { messages: deduped };
               });
             }
           } catch (err) {

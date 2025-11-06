@@ -158,9 +158,33 @@ const GenerationPage = () => {
           return processedMsg;
         });
         
+        const merged = [];
+        for (let i = 0; i < sanitizedMessages.length; i++) {
+          const m = sanitizedMessages[i];
+          if (m && m.role === 'user' && !m.text && Array.isArray(m.images) && m.images.length > 0) {
+            const next = sanitizedMessages[i + 1];
+            if (next && next.role === 'user' && next.text) {
+              const combinedImages = [...(next.images || [])];
+              const existing = new Set(combinedImages.map(img => img && img.url).filter(Boolean));
+              for (const img of m.images) {
+                if (img && img.url && !existing.has(img.url)) {
+                  combinedImages.push(img);
+                  existing.add(img.url);
+                }
+              }
+              merged.push({ ...next, images: combinedImages });
+              i++;
+              continue;
+            }
+            continue;
+          }
+          merged.push(m);
+        }
+        const finalMessages = merged;
+        
         // Update messages
-        setMessages(sanitizedMessages);
-        previousMessagesRef.current = sanitizedMessages;
+        setMessages(finalMessages);
+        previousMessagesRef.current = finalMessages;
         
         // Stop loading if a new agent message was added
         if (newAgentMessageAdded && isLoading) {
@@ -553,6 +577,31 @@ const GenerationPage = () => {
                   {message.text && (
                     <div className="text-sm sm:text-base whitespace-pre-wrap break-words">
                       {message.text}
+                    </div>
+                  )}
+                  
+                  {message.images && message.images.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {message.images.map(({ url, alt }, imgIndex) => (
+                        <div key={imgIndex} className="relative">
+                          <img
+                            src={url}
+                            alt={alt}
+                            width={150}
+                            height={150}
+                            referrerPolicy="no-referrer"
+                            crossOrigin="anonymous"
+                            onError={(e) => {
+                              console.warn('Image failed to load, showing link instead:', url);
+                              const container = e.currentTarget.parentElement;
+                              if (container) {
+                                container.innerHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline break-all">Open image</a>`;
+                              }
+                            }}
+                            className="w-[150px] h-[150px] rounded-lg object-cover border border-gray-300"
+                          />
+                        </div>
+                      ))}
                     </div>
                   )}
                   

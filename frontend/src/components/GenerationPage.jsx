@@ -117,8 +117,9 @@ const GenerationPage = () => {
     // Get auth token from cookie
     const authToken = getCookie('arena_token');
     
-    // Initialize WebSocket connection
-    const wsUrl = process.env.REACT_APP_PROXY_WS_URL || `ws://${window.location.hostname}:3000`;
+    // Initialize WebSocket connection - use wss:// if page is loaded over https
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = process.env.REACT_APP_PROXY_WS_URL || `${protocol}//${window.location.hostname}:3000`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     

@@ -2590,51 +2590,130 @@ async function handleWebSocketMessage(ws, data, session = null) {
               throw new Error('No active browser session');
             }
             const videoPage = session.page;
-            // Click the video card to open the player
-            const videoCard = await videoPage.$('div.tw-border-brand.tw-bg-more-brandLighter');
-            if (!videoCard) {
-              ws.send(JSON.stringify({ success: false, error: 'Video card not found' }));
-              break;
-            }
             
-            await videoCard.click();
-            
-            // Wait for video element to appear
-            await page.waitForSelector('video', { timeout: 5000 });
-            
-            // Extract video URL
-            const videoData = await page.evaluate(() => {
-              const video = document.querySelector('video');
-              if (!video) return null;
+            // First, try to find and extract video directly from the page
+            console.log('🔍 Searching for video element on page...');
+            let videoData = await videoPage.evaluate(() => {
+              // Look for any video element on the page
+              const videos = document.querySelectorAll('video');
+              console.log('Found', videos.length, 'video elements');
               
-              return {
-                videoUrl: video.src || video.querySelector('source')?.src,
-                poster: video.poster,
-                duration: video.duration
-              };
+              for (const video of videos) {
+                const src = video.src || video.querySelector('source')?.src;
+                if (src && src.includes('resource2.heygen.ai')) {
+                  return {
+                    videoUrl: src,
+                    poster: video.poster,
+                    duration: video.duration
+                  };
+                }
+              }
+              return null;
             });
             
-            // Validate the URL: ignore known loading animation and only accept resource2.heygen.ai URLs
-            const resolvedUrl = videoData && videoData.videoUrl ? String(videoData.videoUrl) : '';
-            const isLoadingAnimation = resolvedUrl.includes('static.heygen.ai/heygen/asset/liteSharePreviewAnimation.mp4');
-            const isValidResource2 = resolvedUrl.startsWith('https://resource2.heygen.ai/');
-            if (!resolvedUrl || isLoadingAnimation || !isValidResource2) {
+            // If no video found, try clicking a video card to open it
+            if (!videoData) {
+              console.log('📹 No video found directly, trying to click video card...');
+              try {
+                // Try multiple selectors for the video card
+                const selectors = [
+                  'div.tw-border-brand.tw-bg-more-brandLighter',
+                  'div[class*="video"][class*="card"]',
+                  'div.tw-rounded-2xl.tw-border.tw-cursor-pointer'
+                ];
+                
+                let clicked = false;
+                for (const selector of selectors) {
+                  const card = await videoPage.$(selector);
+                  if (card) {
+                    console.log(`✅ Found video card with selector: ${selector}`);
+                    await card.click();
+                    clicked = true;
+                    break;
+                  }
+                }
+                
+                if (clicked) {
+                  // Wait for video element with shorter timeout
+                  try {
+                    await videoPage.waitForSelector('video', { timeout: 5000 });
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    videoData = await videoPage.evaluate(() => {
+                      const video = document.querySelector('video');
+                      if (!video) return null;
+                      
+                      return {
+                        videoUrl: video.src || video.querySelector('source')?.src,
+                        poster: video.poster,
+                        duration: video.duration
+                      };
+                    });
+                  } catch (e) {
+                    console.log('⏱️ Timeout waiting for video after click');
+                  }
+                } else {
+                  console.log('⚠️ No video card found with any selector');
+                }
+              } catch (clickError) {
+                console.log('⚠️ Error clicking video card:', clickError.message);
+              }
+            }
+            
+            // If still no video data, send error
+            if (!videoData) {
+              console.log('❌ No video data found');
               ws.send(JSON.stringify({ 
                 success: false, 
                 action: 'get_video_url', 
-                error: 'Invalid or loading animation URL' 
+                error: 'No video found on page' 
+              }));
+              break;
+            }
+            
+            // Validate the URL: ignore known loading animation and only accept resource2.heygen.ai URLs
+            const resolvedUrl = videoData && videoData.videoUrl ? String(videoData.videoUrl) : '';
+            const isLoadingAnimation = resolvedUrl.includes('static.heygen.ai/heygen/asset/liteSharePreviewAnimation.mp4') || 
+                                    resolvedUrl.includes('loading-animation');
+            const isValidResource2 = resolvedUrl.startsWith('https://resource2.heygen.ai/');
+            
+            if (!resolvedUrl) {
+              ws.send(JSON.stringify({ 
+                success: false, 
+                action: 'get_video_url', 
+                error: 'No video URL found' 
+              }));
+              break;
+            }
+            
+            if (isLoadingAnimation) {
+              console.log('🔍 Found loading animation, waiting...');
+              ws.send(JSON.stringify({ 
+                success: false, 
+                action: 'get_video_url', 
+                error: 'Loading animation detected, please wait...' 
+              }));
+              break;
+            }
+            
+            if (!isValidResource2) {
+              console.log('⚠️ Invalid video URL format:', resolvedUrl);
+              ws.send(JSON.stringify({ 
+                success: false, 
+                action: 'get_video_url', 
+                error: 'Invalid video URL format' 
               }));
               break;
             }
             
             // Close the modal/player if there's a close button
             try {
-              const closeButton = await page.$('button[aria-label="Close"], button:has-text("Close"), [class*="close"]');
+              const closeButton = await videoPage.$('button[aria-label="Close"], button:has-text("Close"), [class*="close"]');
               if (closeButton) await closeButton.click();
             } catch (_) {}
             
             // Get the current URL to extract the username from the session
-            const currentUrl = page.url();
+            const currentUrl = videoPage.url();
             const sessionMatch = currentUrl.match(/\/agent\/([^/]+)/);
             const sessionId = sessionMatch ? sessionMatch[1] : 'anonymous';
             
@@ -2755,8 +2834,29 @@ async function handleWebSocketMessage(ws, data, session = null) {
             
             ws.send(JSON.stringify({ success: true, action: 'get_video_url', data: videoData }));
           } catch (err) {
-            console.error('❌ get_video_url error:', err.message);
-            ws.send(JSON.stringify({ success: false, action: 'get_video_url', error: err.message }));
+            console.error('❌ get_video_url error:', err);
+            if (err.message.includes('closed') || err.message.includes('detached')) {
+              console.log('🔄 Attempting to recover session...');
+              try {
+                // Try to reinitialize the session
+                const userEmail = session?.userEmail || 'anonymous';
+                const newSession = await getUserSession(userEmail);
+                if (newSession) {
+                  Object.assign(session, newSession);
+                  // Retry the operation after a short delay
+                  await new Promise(resolve => setTimeout(resolve, 1000));
+                  // Forward the message to the handler again with the new session
+                  return handleWebSocketMessage(ws, data, session);
+                }
+              } catch (recoveryError) {
+                console.error('❌ Failed to recover session:', recoveryError);
+              }
+            }
+            ws.send(JSON.stringify({ 
+              success: false, 
+              action: 'get_video_url', 
+              error: `Error getting video: ${err.message}` 
+            }));
           }
           break;
           

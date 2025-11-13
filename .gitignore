@@ -41,6 +41,7 @@ test-results/
 # Authentication files (sensitive!)
 heygen-storage.json
 heygen-cookies.json
+uploads/
 
 # Process IDs
 .pids

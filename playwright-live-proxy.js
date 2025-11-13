@@ -2611,53 +2611,9 @@ async function handleWebSocketMessage(ws, data, session = null) {
               return null;
             });
             
-            // If no video found, try clicking a video card to open it
+            // If no video found, report that no video found
             if (!videoData) {
-              console.log('📹 No video found directly, trying to click video card...');
-              try {
-                // Try multiple selectors for the video card
-                const selectors = [
-                  'div.tw-border-brand.tw-bg-more-brandLighter',
-                  'div[class*="video"][class*="card"]',
-                  'div.tw-rounded-2xl.tw-border.tw-cursor-pointer'
-                ];
-                
-                let clicked = false;
-                for (const selector of selectors) {
-                  const card = await videoPage.$(selector);
-                  if (card) {
-                    console.log(`✅ Found video card with selector: ${selector}`);
-                    await card.click();
-                    clicked = true;
-                    break;
-                  }
-                }
-                
-                if (clicked) {
-                  // Wait for video element with shorter timeout
-                  try {
-                    await videoPage.waitForSelector('video', { timeout: 5000 });
-                    await new Promise(resolve => setTimeout(resolve, 500));
-                    
-                    videoData = await videoPage.evaluate(() => {
-                      const video = document.querySelector('video');
-                      if (!video) return null;
-                      
-                      return {
-                        videoUrl: video.src || video.querySelector('source')?.src,
-                        poster: video.poster,
-                        duration: video.duration
-                      };
-                    });
-                  } catch (e) {
-                    console.log('⏱️ Timeout waiting for video after click');
-                  }
-                } else {
-                  console.log('⚠️ No video card found with any selector');
-                }
-              } catch (clickError) {
-                console.log('⚠️ Error clicking video card:', clickError.message);
-              }
+              console.log('⚠️ No video found directly or by clicking video card');
             }
             
             // If still no video data, send error

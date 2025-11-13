@@ -117,9 +117,13 @@ const GenerationPage = () => {
     // Get auth token from cookie
     const authToken = getCookie('arena_token');
     
-    // Initialize WebSocket connection - use wss:// if page is loaded over https
+    // Initialize WebSocket connection - use the same protocol as the page
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = process.env.REACT_APP_PROXY_WS_URL || `${protocol}//${window.location.hostname}:3000`;
+    // Use the same host as the current page for the WebSocket connection
+    const wsHost = window.location.host;
+    // Remove any existing WebSocket protocol if present in the host
+    const cleanHost = wsHost.replace(/^wss?:\/\//, '');
+    const wsUrl = process.env.REACT_APP_PROXY_WS_URL || `${protocol}//${cleanHost}`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     

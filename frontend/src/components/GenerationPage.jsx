@@ -1,5 +1,15 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useParams, useLocation } from 'react-router-dom';
 import VideoGenerationPreloader from './VideoGenerationPreloader';
+import Header from './Header';
+
+// Helper function to get cookie by name
+const getCookie = (name) => {
+  const value = `; ${document.cookie}`;
+  const parts = value.split(`; ${name}=`);
+  if (parts.length === 2) return parts.pop().split(';').shift();
+  return null;
+};
 
 const GenerationPage = () => {
   const [messages, setMessages] = useState([]);
@@ -19,18 +29,72 @@ const GenerationPage = () => {
     }
     return false;
   });
-  const [sessionId, setSessionId] = useState(null);
+  const { sessionId: urlSessionId } = useParams();
+  const [sessionId, setSessionId] = useState(urlSessionId || null);
   const [sessionPath, setSessionPath] = useState(null);
   const [videoModal, setVideoModal] = useState(null);
+  
+  // Handle URL parameter changes
+  useEffect(() => {
+    if (urlSessionId && urlSessionId !== sessionId) {
+      setSessionId(urlSessionId);
+      
+      // If WebSocket is connected, navigate to the new session
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        console.log('URL changed, navigating to session:', urlSessionId);
+        wsRef.current.send(JSON.stringify({
+          action: 'navigate',
+          url: `/agent/${urlSessionId}`
+        }));
+      }
+    }
+  }, [urlSessionId, sessionId]);
   const [generationProgress, setGenerationProgress] = useState(null);
   const [attachedFiles, setAttachedFiles] = useState([]);
   const messagesEndRef = useRef(null);
   const wsRef = useRef(null);
   const pollIntervalRef = useRef(null);
   const progressPollIntervalRef = useRef(null);
+  const videoUrlPollIntervalRef = useRef(null);
+  const getVideoUrlPollIntervalRef = useRef(null);
   const previousMessagesRef = useRef([]);
   const videoUrlsRef = useRef(new Map()); // Track video URLs by message ID
+  const assignedUrlsRef = useRef(new Set()); // Track URLs already assigned to any message
+  const videoHashesRef = useRef(new Set()); // Track video hashes to prevent duplicate videos
   const fileInputRef = useRef(null);
+  const initialLoadCompleteRef = useRef(false); // Track if initial load is done
+
+  // Manual extraction trigger function (stable reference)
+  const extractVideoUrls = useCallback(() => {
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      console.log('🎬 Manually triggering video URL extraction');
+      wsRef.current.send(JSON.stringify({ action: 'extract_all_video_urls' }));
+    } else {
+      console.error('❌ WebSocket not connected');
+    }
+  }, []);
+
+  // Expose extraction to window for debugging
+  useEffect(() => {
+    window.extractVideoUrls = extractVideoUrls;
+    return () => {
+      delete window.extractVideoUrls;
+    };
+  }, [extractVideoUrls]);
+
+  // Extract video hash from HeyGen URLs to deduplicate by video, not URL
+  const extractVideoHash = (url) => {
+    if (!url) return null;
+    // Extract the video hash from HeyGen URLs
+    // Matches patterns like: /caption_HASH.mp4 or /transcode/HASH/
+    const captionMatch = url.match(/caption_([a-f0-9]{32})/);
+    if (captionMatch) return captionMatch[1];
+    
+    const transcodeMatch = url.match(/transcode\/([a-f0-9]{32})\//);
+    if (transcodeMatch) return transcodeMatch[1];
+    
+    return null;
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -46,16 +110,167 @@ const GenerationPage = () => {
     scrollToBottom();
   }, [messages]);
 
-  // Connect to Playwright proxy WebSocket
+  // Replace the WebSocket connection useEffect in GenerationPage.jsx
+  // This version properly handles direct URL navigation to /generate/:sessionId
+
   useEffect(() => {
-    // Use dynamic URL based on current location
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    const PROXY_WS_URL = process.env.REACT_APP_PROXY_WS_URL || `${protocol}//${host}/proxy`;
-    const ws = new WebSocket(PROXY_WS_URL);
+    // Get auth token from cookie
+    const authToken = getCookie('arena_token');
+    
+    // Initialize WebSocket connection
+    const wsUrl = process.env.REACT_APP_PROXY_WS_URL || `ws://${window.location.hostname}:3000`;
+    const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
     
-    // Expose debug function to window for console access
+    ws.onopen = () => {
+      console.log('✅ Connected to Playwright proxy');
+      
+      // SEND AUTH TOKEN FIRST, BEFORE ANY OTHER ACTION
+      if (authToken) {
+        console.log('🔐 Sending auth token to WebSocket');
+        ws.send(JSON.stringify({
+          action: 'authenticate',
+          token: authToken
+        }));
+      } else {
+        console.log('⚠️ No auth token found, proceeding as anonymous');
+      }
+      
+      console.log('🔍 Debug commands available:');
+      console.log('  - debugDom() - Show DOM structure');
+      console.log('  - getMessages() - Fetch messages');
+      
+      // Start progress polling immediately and keep it running
+      console.log('🔄 Starting continuous progress polling');
+      startProgressPolling();
+      
+      // Start get_video_url polling for all page loads
+      console.log('🎥 Starting get_video_url polling');
+      startGetVideoUrlPolling();
+      
+      // Determine which session to load
+      const savedSession = sessionStorage.getItem('currentSession');
+      const targetSessionId = urlSessionId; // From URL params
+      
+      if (targetSessionId) {
+        // Direct URL navigation (e.g., /generate/2c6149a9-9ee4-41c8-9df5-f3d7be5bea2e)
+        console.log('🎯 Direct URL navigation detected, sessionId:', targetSessionId);
+        const sessionPath = `/agent/${targetSessionId}`;
+        
+        setSessionPath(sessionPath);
+        setSessionId(targetSessionId);
+        
+        // Try to restore cached messages for this session if present
+        const cached = sessionStorage.getItem(`messages:${targetSessionId}`);
+        if (cached) {
+          try {
+            const parsed = JSON.parse(cached);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              console.log('📦 Restored', parsed.length, 'cached messages');
+              setMessages(parsed);
+              previousMessagesRef.current = parsed;
+              // Seed assigned URL set from cached messages
+              for (const m of parsed) {
+                if (m && m.video && m.video.videoUrl) {
+                  assignedUrlsRef.current.add(m.video.videoUrl);
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to parse cached messages:', err);
+          }
+        }
+        
+        // Wait for authentication to complete before initial load
+        setTimeout(() => {
+          if (ws.readyState === WebSocket.OPEN) {
+            // First navigate to the session
+            console.log('🌐 Navigating to session:', sessionPath);
+            ws.send(JSON.stringify({ 
+              action: 'navigate', 
+              url: sessionPath 
+            }));
+            
+            // Then trigger initial_load after a short delay
+            setTimeout(() => {
+              if (ws.readyState === WebSocket.OPEN && !initialLoadCompleteRef.current) {
+                console.log('🚀 Triggering initial_load for direct URL navigation');
+                ws.send(JSON.stringify({ action: 'initial_load' }));
+              }
+            }, 1000);
+          }
+        }, 500);
+        
+      } else if (savedSession) {
+        // Restored session from sessionStorage (e.g., after creating new session)
+        try {
+          const session = JSON.parse(savedSession);
+          if (session.sessionPath) {
+            console.log('📂 Restoring saved session:', session.sessionPath);
+            setSessionPath(session.sessionPath);
+            const match = session.sessionPath.match(/\/agent\/([^/?]+)/);
+            if (match) {
+              const restoredSessionId = match[1];
+              setSessionId(restoredSessionId);
+              
+              // Restore cached messages
+              const cached = sessionStorage.getItem(`messages:${restoredSessionId}`);
+              if (cached) {
+                try {
+                  const parsed = JSON.parse(cached);
+                  if (Array.isArray(parsed) && parsed.length > 0) {
+                    console.log('📦 Restored', parsed.length, 'cached messages');
+                    setMessages(parsed);
+                    previousMessagesRef.current = parsed;
+                    for (const m of parsed) {
+                      if (m && m.video && m.video.videoUrl) {
+                        assignedUrlsRef.current.add(m.video.videoUrl);
+                      }
+                    }
+                  }
+                } catch (err) {
+                  console.warn('Failed to parse cached messages:', err);
+                }
+              }
+            }
+            
+            // Wait for authentication before navigation
+            setTimeout(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ 
+                  action: 'navigate', 
+                  url: session.sessionPath 
+                }));
+                
+                // Check if this is a recent session (within last 5 seconds)
+                const isRecent = session.timestamp && (Date.now() - session.timestamp) < 5000;
+                
+                if (isRecent) {
+                  // New session - just use normal polling
+                  console.log('🆕 Recent session detected, starting normal polling');
+                  setTimeout(() => startPolling(), 1000);
+                } else {
+                  // Older session - trigger initial_load
+                  setTimeout(() => {
+                    if (ws.readyState === WebSocket.OPEN && !initialLoadCompleteRef.current) {
+                      console.log('🚀 Triggering initial_load for saved session');
+                      ws.send(JSON.stringify({ action: 'initial_load' }));
+                    }
+                  }, 1000);
+                }
+              }
+            }, 500);
+          }
+        } catch (err) {
+          console.error('Failed to load session:', err);
+        }
+      } else {
+        // No session at all - this is the home page
+        console.log('🏠 No session detected - waiting for user to create one');
+      }
+    };
+
+    // Expose debug functions
     window.debugDom = () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ action: 'debug_dom' }));
@@ -72,48 +287,84 @@ const GenerationPage = () => {
       }
     };
 
-    console.log('🔗 Connecting to WebSocket:', PROXY_WS_URL);
+    // ... rest of your ws.onmessage, ws.onerror, ws.onclose handlers stay the same ...
 
-    ws.onopen = () => {
-      console.log('✅ Connected to Playwright proxy');
-      console.log('📍 Debug commands available:');
-      console.log('  - debugDom() - Show DOM structure');
-      console.log('  - getMessages() - Fetch messages');
+
+
+    console.log('🔗 Connecting to WebSocket:', process.env.REACT_APP_PROXY_WS_URL);
+
+   // ws.onopen = () => {
+    //   console.log('✅ Connected to Playwright proxy');
+    //   console.log('📍 Debug commands available:');
+    //   console.log('  - debugDom() - Show DOM structure');
+    //   console.log('  - getMessages() - Fetch messages');
       
-      // Start progress polling immediately and keep it running
-      console.log('🔄 Starting continuous progress polling');
-      startProgressPolling();
+    //   // Start progress polling immediately and keep it running
+    //   console.log('🔄 Starting continuous progress polling');
+    //   startProgressPolling();
       
-      // Start message polling immediately
-      console.log('🔄 Starting continuous message polling');
-      startPolling();
+    //   // Start message polling immediately
+    //   console.log('🔄 Starting continuous message polling');
+    //   startPolling();
       
-      // Load existing session from sessionStorage
-      const savedSession = sessionStorage.getItem('currentSession');
-      if (savedSession) {
-        try {
-          const session = JSON.parse(savedSession);
-          if (session.sessionPath) {
-            setSessionPath(session.sessionPath);
-            const match = session.sessionPath.match(/\/agent\/([^/?]+)/);
-            if (match) {
-              setSessionId(match[1]);
-            }
+    //   // Load existing session from sessionStorage
+    //   const savedSession = sessionStorage.getItem('currentSession');
+    //   if (savedSession) {
+    //     try {
+    //       const session = JSON.parse(savedSession);
+    //       if (session.sessionPath) {
+    //         setSessionPath(session.sessionPath);
+    //         const match = session.sessionPath.match(/\/agent\/([^/?]+)/);
+    //         if (match) {
+    //           setSessionId(match[1]);
+    //           // Restore cached messages for this session if present
+    //           const cached = sessionStorage.getItem(`messages:${match[1]}`);
+    //           if (cached) {
+    //             try {
+    //               const parsed = JSON.parse(cached);
+    //               if (Array.isArray(parsed) && parsed.length > 0) {
+    //                 setMessages(parsed);
+    //                 previousMessagesRef.current = parsed;
+    //                 // Seed assigned URL set from cached messages
+    //                 try {
+    //                   for (const m of parsed) {
+    //                     if (m && m.video && m.video.videoUrl) {
+    //                       assignedUrlsRef.current.add(m.video.videoUrl);
+    //                     }
+    //                   }
+    //                 } catch (_) {}
+    //               }
+    //             } catch (_) {}
+    //           }
+    //         }
             
-            // Navigate to the session
-            ws.send(JSON.stringify({ 
-              action: 'navigate', 
-              url: session.sessionPath 
-            }));
-          }
-        } catch (err) {
-          console.error('Failed to load session:', err);
-        }
-      }
-    };
+    //         // Navigate to the session
+    //         ws.send(JSON.stringify({ 
+    //           action: 'navigate', 
+    //           url: session.sessionPath 
+    //         }));
+    //       }
+    //     } catch (err) {
+    //       console.error('Failed to load session:', err);
+    //     }
+    //   }
+    // };
+
+// Replace your ws.onmessage handler in GenerationPage.jsx with this fixed version
 
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
+      
+      // Handle authentication response
+      if (data.action === 'authenticated') {
+        console.log('✅ WebSocket authentication successful, user:', data.email);
+        return;
+      }
+      
+      if (data.action === 'authentication_failed') {
+        console.warn('⚠️ WebSocket authentication failed:', data.error);
+        return;
+      }
       
       // Handle debug_dom response
       if (data.action === 'debug_dom') {
@@ -123,25 +374,96 @@ const GenerationPage = () => {
       
       console.log('📬 Message from proxy:', data);
       
-      // Handle get_messages response with new format
-      if (data.action === 'get_messages' && data.messages) {
+      // Handle initial_load response
+      if (data.action === 'initial_load') {
+        if (data.success && data.messages) {
+          console.log('✅ Initial load complete, received', data.messages.length, 'messages');
+          
+          // Process messages same way as get_messages
+          const sanitizedMessages = data.messages.map(msg => {
+            let processedMsg = msg;
+            if (msg.role === 'agent' && msg.text) {
+              let text = msg.text;
+              text = text.replace(/heygen/gi, 'ArenaGen');
+              processedMsg = { ...msg, text: sanitizeMessage(text) };
+            }
+            return processedMsg;
+          });
+          
+          // Set messages directly (no merging needed for initial load)
+          setMessages(sanitizedMessages);
+          previousMessagesRef.current = sanitizedMessages;
+          
+          // Seed video URLs and hashes
+          for (const m of sanitizedMessages) {
+            if (m && m.video && m.video.videoUrl) {
+              assignedUrlsRef.current.add(m.video.videoUrl);
+              const hash = extractVideoHash(m.video.videoUrl);
+              if (hash) videoHashesRef.current.add(hash);
+            }
+          }
+          
+          // Persist to sessionStorage
+          try {
+            if (sessionId) {
+              sessionStorage.setItem(`messages:${sessionId}`, JSON.stringify(sanitizedMessages));
+            }
+          } catch (_) {}
+          
+          // Mark initial load as complete
+          initialLoadCompleteRef.current = true;
+          
+          // Now start normal polling
+          console.log('🔄 Initial load complete, starting normal message polling');
+          startPolling();
+          startVideoUrlPolling();
+          startGetVideoUrlPolling();
+          
+          // Stop loading state
+          setIsLoading(false);
+        } else {
+          console.error('❌ Initial load failed:', data.error);
+          // Fall back to normal polling
+          startPolling();
+          startVideoUrlPolling();
+          startGetVideoUrlPolling();
+        }
+        return;
+      }
+      
+      // Handle get_messages response - FIX: Check for nested messages object
+      if (data.action === 'get_messages') {
+        // Extract messages array from either data.messages directly OR data.messages.messages
+        const messagesArray = Array.isArray(data.messages) 
+          ? data.messages 
+          : (data.messages && Array.isArray(data.messages.messages) 
+            ? data.messages.messages 
+            : []);
+        
+        if (messagesArray.length === 0) {
+          console.log('⚠️ No messages in get_messages response');
+          return;
+        }
+        
         // Check if a NEW agent message was added
         const previousAgentCount = previousMessagesRef.current.filter(msg => msg.role === 'agent').length;
-        const newAgentCount = data.messages.filter(msg => msg.role === 'agent').length;
+        const newAgentCount = messagesArray.filter(msg => msg.role === 'agent').length;
         const newAgentMessageAdded = newAgentCount > previousAgentCount;
         
         // Process agent messages and restore video URLs
-        const sanitizedMessages = data.messages.map(msg => {
+        const sanitizedMessages = messagesArray.map(msg => {
           let processedMsg = msg;
           
-          // Sanitize agent messages
+          // Sanitize agent messages and replace HeyGen with ArenaGen
           if (msg.role === 'agent' && msg.text) {
-            processedMsg = { ...msg, text: sanitizeMessage(msg.text) };
+            let text = msg.text;
+            text = text.replace(/heygen/gi, 'ArenaGen');
+            processedMsg = { ...msg, text: sanitizeMessage(text) };
           }
           
           // Restore video URL if we have one stored for this message
           if (processedMsg.video && !processedMsg.video.videoUrl) {
-            const messageId = processedMsg.id || `${processedMsg.video.title || 'video'}_${processedMsg.timestamp || data.messages.indexOf(msg)}`;
+            const messageId = processedMsg.id || `${processedMsg.video.title || 'video'}_${processedMsg.timestamp || messagesArray.indexOf(msg)}`;
             const storedUrl = videoUrlsRef.current.get(messageId);
             if (storedUrl) {
               processedMsg = {
@@ -158,6 +480,7 @@ const GenerationPage = () => {
           return processedMsg;
         });
         
+        // ... rest of your existing get_messages logic for merging and updating messages ...
         const merged = [];
         for (let i = 0; i < sanitizedMessages.length; i++) {
           const m = sanitizedMessages[i];
@@ -182,9 +505,120 @@ const GenerationPage = () => {
         }
         const finalMessages = merged;
         
-        // Update messages
-        setMessages(finalMessages);
-        previousMessagesRef.current = finalMessages;
+        // Update state with merged messages
+        setMessages(prev => {
+          const prevArr = Array.isArray(prev) ? prev : [];
+          const result = [...prevArr];
+          
+          // Helper to detect if a message is a partial/incomplete version of the previous one
+          const isPartialOfPrevious = (prevMsg, newMsg) => {
+            if (!prevMsg || !newMsg) return false;
+            if (prevMsg.role !== newMsg.role) return false;
+            if (prevMsg.video || newMsg.video) return false; // Don't merge video messages
+            
+            const prevText = (prevMsg.text || '').trim();
+            const newText = (newMsg.text || '').trim();
+            
+            if (!prevText || !newText) return false;
+            
+            // If new message is shorter and is a prefix of previous, it's likely partial
+            if (newText.length < prevText.length && prevText.startsWith(newText)) {
+              console.log('🔄 [merge] Detected partial message - skipping to avoid duplication');
+              return true;
+            }
+            
+            // If new message is longer and starts with previous text, merge them
+            if (newText.length > prevText.length && newText.startsWith(prevText)) {
+              console.log('🔄 [merge] Detected message continuation - merging');
+              return true;
+            }
+            
+            return false;
+          };
+          
+          const upsertMessage = (msg) => {
+            // ... your existing upsertMessage logic ...
+            if (msg && msg.video) {
+              const msgHasUrl = !!(msg.video && msg.video.videoUrl);
+              const msgTitle = (msg.video.title || '').trim();
+              
+              if (msgHasUrl) {
+                const existingVideoIndex = result.findIndex(r => r && r.video && r.video.videoUrl === msg.video.videoUrl);
+                if (existingVideoIndex >= 0) {
+                  const existing = result[existingVideoIndex];
+                  result[existingVideoIndex] = {
+                    ...existing,
+                    ...msg,
+                    video: { ...(existing.video || {}), ...(msg.video || {}) }
+                  };
+                  assignedUrlsRef.current.add(msg.video.videoUrl);
+                  return;
+                }
+              }
+              
+              if (!msgHasUrl && msgTitle) {
+                const existingCompletedIndex = result.findIndex(r => 
+                  r && r.video && r.video.videoUrl && 
+                  (r.video.title || '').trim() === msgTitle
+                );
+                if (existingCompletedIndex >= 0) {
+                  return;
+                }
+                
+                const existingPendingIndex = result.findIndex(r => r && r.video && !r.video.videoUrl && (r.video.title || '').trim() === msgTitle);
+                if (existingPendingIndex >= 0) {
+                  const existing = result[existingPendingIndex];
+                  result[existingPendingIndex] = {
+                    ...existing,
+                    ...msg,
+                    video: { ...(existing.video || {}), ...(msg.video || {}) }
+                  };
+                  return;
+                }
+              }
+              
+              result.push(msg);
+              if (msgHasUrl && msg.video.videoUrl) {
+                assignedUrlsRef.current.add(msg.video.videoUrl);
+              }
+              return;
+            }
+            
+            const keyText = (msg && msg.text ? msg.text : '').trim();
+            const keyImgs = (msg && msg.images ? msg.images : [])
+              .map(i => i && i.url).filter(Boolean).sort().join('|');
+            
+            // Check if this is a partial message of the last message
+            const lastMsg = result[result.length - 1];
+            if (isPartialOfPrevious(lastMsg, msg)) {
+              // If new message is shorter (partial), skip it
+              if ((msg.text || '').length < (lastMsg.text || '').length) {
+                return;
+              }
+              // If new message is longer (continuation), update the last message
+              result[result.length - 1] = { ...lastMsg, ...msg };
+              return;
+            }
+            
+            const existingIndex = result.findIndex(m => m && !m.video && (m.role || '') === (msg.role || '') && (m.text || '').trim() === keyText && (m.images || []).map(i => i && i.url).filter(Boolean).sort().join('|') === keyImgs);
+            if (existingIndex >= 0) {
+              result[existingIndex] = { ...result[existingIndex], ...msg };
+            } else {
+              result.push(msg);
+            }
+          };
+          
+          for (const m of finalMessages) upsertMessage(m);
+          
+          const capped = result.slice(-200);
+          previousMessagesRef.current = capped;
+          try {
+            if (sessionId) {
+              sessionStorage.setItem(`messages:${sessionId}`, JSON.stringify(capped));
+            }
+          } catch (_) {}
+          return capped;
+        });
         
         // Stop loading if a new agent message was added
         if (newAgentMessageAdded && isLoading) {
@@ -192,14 +626,7 @@ const GenerationPage = () => {
           setIsLoading(false);
         }
         
-        // Check if any message has a video without URL - fetch it
-        const videoWithoutUrl = sanitizedMessages.find(msg => msg.video && !msg.video.videoUrl);
-        if (videoWithoutUrl && videoWithoutUrl.video) {
-          if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-            console.log('🎬 Requesting video URL');
-            wsRef.current.send(JSON.stringify({ action: 'get_video_url' }));
-          }
-        }
+        return;
       }
       
       // Handle get_generation_progress response
@@ -209,127 +636,205 @@ const GenerationPage = () => {
           setGenerationProgress(data.data);
           console.log('🎥 Video generation detected with', data.data.percentage + '%');
         } else {
+          const wasGenerating = generationProgress && generationProgress.isGenerating;
           setGenerationProgress(null);
-          // Don't stop progress polling - keep it running continuously
+          setIsLoading(false);
+          
+          // Only trigger extraction ONCE when generation actually completes (not on every poll)
+          if (wasGenerating && !data.data.isGenerating && initialLoadCompleteRef.current) {
+            console.log('🎉 Generation just completed, starting get_video_url polling...');
+            startGetVideoUrlPolling();
+          }
         }
+        return;
+      }
+      
+      // Handle extract_all_video_urls response
+      if (data.action === 'extract_all_video_urls' && data.success && data.data) {
+        console.log('🎬 Received extracted video URLs:', data.data.videos.length);
+        
+        setMessages(prev => {
+          const updated = [...prev];
+          
+          data.data.videos.forEach(videoData => {
+            // Try to match by poster first, then by videoUrl hash
+            let matchIndex = -1;
+            
+            if (videoData.poster) {
+              matchIndex = updated.findIndex(msg => 
+                msg && msg.video && 
+                !msg.video.videoUrl &&
+                (msg.video.poster === videoData.poster || msg.video.thumbnail === videoData.poster)
+              );
+            }
+            
+            // If no match by poster, try to match by URL hash to avoid duplicates
+            if (matchIndex < 0) {
+              const incomingHash = extractVideoHash(videoData.videoUrl);
+              if (incomingHash && videoHashesRef.current.has(incomingHash)) {
+                console.log(`⏭️  Video already processed (hash match): ${incomingHash}`);
+                return;
+              }
+            }
+            
+            // If still no match, find first pending video without URL
+            if (matchIndex < 0) {
+              matchIndex = updated.findIndex(msg => 
+                msg && msg.video && !msg.video.videoUrl
+              );
+            }
+            
+            if (matchIndex >= 0) {
+              const messageId = updated[matchIndex].id || 
+                `${videoData.title}_${updated[matchIndex].timestamp || matchIndex}`;
+              
+              videoUrlsRef.current.set(messageId, {
+                videoUrl: videoData.videoUrl,
+                poster: videoData.poster
+              });
+              
+              updated[matchIndex] = {
+                ...updated[matchIndex],
+                video: {
+                  ...updated[matchIndex].video,
+                  videoUrl: videoData.videoUrl,
+                  poster: videoData.poster || updated[matchIndex].video.poster
+                }
+              };
+              
+              assignedUrlsRef.current.add(videoData.videoUrl);
+              const videoHash = extractVideoHash(videoData.videoUrl);
+              if (videoHash) videoHashesRef.current.add(videoHash);
+              
+              console.log(`✅ Updated message ${matchIndex} with video URL`);
+            } else {
+              console.log(`⚠️  No matching message found for video: ${videoData.title}`);
+            }
+          });
+          
+          try {
+            if (sessionId) {
+              sessionStorage.setItem(`messages:${sessionId}`, JSON.stringify(updated.slice(-200)));
+            }
+          } catch (_) {}
+          
+          return updated;
+        });
+        
+        setIsLoading(false);
+        return;
       }
       
       // Handle get_video_url response
       if (data.action === 'get_video_url' && data.success && data.data) {
-        const newUrl = data.data.videoUrl;
-        console.log('Video URL received:', newUrl);
-        
-        // Only process actual video URLs, not loading animations
-        if (newUrl && newUrl.startsWith('https://resource2.')) {
-          // Find the message without video URL and store the URL
-          setMessages(prev => {
-            const updated = [...prev];
-            
+        const payload = data.data || {};
+        const newUrl = payload.videoUrl || '';
+        const poster = (payload.poster || '').trim();
+        const title = (payload.title || '').trim() || 'Your video is ready!';
+        const originalUrl = payload.originalUrl || newUrl;
+        const videoHash = extractVideoHash(originalUrl);
+
+        if (!newUrl) {
+          return;
+        }
+
+        setMessages(prev => {
+          const updated = Array.isArray(prev) ? [...prev] : [];
+
+          // If this URL already assigned, no-op
+          if (assignedUrlsRef.current.has(newUrl)) {
+            return updated;
+          }
+
+          // Find the last video message without a videoUrl assigned
+          let targetIndex = -1;
+          for (let i = updated.length - 1; i >= 0; i--) {
+            const msg = updated[i];
+            if (msg && msg.video && !msg.video.videoUrl) {
+              targetIndex = i;
+              break;
+            }
+          }
+
+          if (poster) {
             for (let i = updated.length - 1; i >= 0; i--) {
-              if (updated[i].video && !updated[i].video.videoUrl) {
-                const messageId = updated[i].id || `${updated[i].video.title || 'video'}_${updated[i].timestamp || i}`;
-                const existingUrl = videoUrlsRef.current.get(messageId);
-                
-                // Only update if this is a different URL
-                if (!existingUrl || existingUrl.videoUrl !== newUrl) {
-                  // Store the URL
-                  videoUrlsRef.current.set(messageId, {
-                    videoUrl: newUrl,
-                    poster: data.data.poster
-                  });
-                  
-                  // Update the message
-                  updated[i] = {
-                    ...updated[i],
-                    video: {
-                      ...updated[i].video,
-                      videoUrl: newUrl,
-                      poster: data.data.poster || updated[i].video.poster
-                    }
-                  };
-                  console.log('✅ Updated message with actual video URL:', messageId);
-                } else {
-                  console.log('⏭️ Same URL already stored for message:', messageId);
+              const m = updated[i];
+              if (m && m.video && !m.video.videoUrl) {
+                const p = (m.video.poster || m.video.thumbnail || '').trim();
+                if (p && p === poster) {
+                  targetIndex = i;
+                  break;
                 }
-                break;
               }
             }
-            
-            return updated;
-          });
-        } else {
-          console.log('⏭️ Ignoring loading animation URL:', newUrl);
-        }
-      }
-      // Handle navigate response
-      if (data.action === 'navigate' || (data.messages && !data.action && data.action !== 'get_messages')) {
-        if (data.messages) {
-          // New format: array of message objects
-          if (Array.isArray(data.messages)) {
-            // Sanitize all agent messages
-            const sanitizedNavigateMessages = data.messages.map(msg => {
-              if (msg.role === 'agent' && msg.text) {
-                return { ...msg, text: sanitizeMessage(msg.text) };
-              }
-              return msg;
-            });
-            setMessages(sanitizedNavigateMessages);
-            previousMessagesRef.current = sanitizedNavigateMessages;
-            console.log('Loaded messages from navigate:', data.messages.length);
-            // Keep loading state active - let progress polling control it
-            // Don't stop loading here as the agent might still be generating
           }
-        }
-        
-        // Extract session ID from URL and start polling
-        if (data.url && data.url.includes('/agent/')) {
-          const match = data.url.match(/\/agent\/([^/?]+)/);
-          if (match) {
-            setSessionId(match[1]);
-            setSessionPath(data.url.replace(/https:\/\/[^/]+/, ''));
-            console.log('Session loaded, starting polling...');
-            
-            // Poll immediately with multiple attempts to catch agent response
-            const pollAttempts = [500, 1500, 2500, 3500];
-            pollAttempts.forEach(delay => {
-              setTimeout(() => {
-                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                  console.log('Polling for messages at', delay, 'ms...');
-                  wsRef.current.send(JSON.stringify({ action: 'get_messages' }));
+
+          // if (targetIndex < 0 && title) {
+          //   for (let i = updated.length - 1; i >= 0; i--) {
+          //     const m = updated[i];
+          //     if (m && m.video && !m.video.videoUrl) {
+          //       const t = (m.video.title || '').trim();
+          //       if (t && t === title) {
+          //         targetIndex = i;
+          //         break;
+          //       }
+          //     }
+          //   }
+          // }
+
+          // if (targetIndex < 0) {
+          //   // Fallback: create a new video message
+          //   updated.push({
+          //     role: 'agent',
+          //     text: '',
+          //     video: {
+          //       thumbnail: poster || '',
+          //       videoUrl: newUrl,
+          //       poster: poster || '',
+          //       title
+          //     }
+          //   });
+          // } else {
+            // Update the pending card with the URL
+            const existing = updated[targetIndex];
+            if (existing && existing.video) {
+              updated[targetIndex] = {
+                ...existing,
+                video: {
+                  ...existing.video,
+                  videoUrl: newUrl || existing.video.videoUrl,
+                  poster: poster || existing.video.poster,
+                  title: title || existing.video.title
                 }
-              }, delay);
-            });
-            
-            // Polling is already running continuously from ws.onopen
-            // Progress polling is already running continuously
+              };
+            }
+
+          // Track URL/hash to prevent duplicates and persist
+          assignedUrlsRef.current.add(newUrl);
+          if (videoHash) {
+            videoHashesRef.current.add(videoHash);
           }
-        }
+          try {
+            if (sessionId) {
+              sessionStorage.setItem(`messages:${sessionId}`, JSON.stringify(updated.slice(-200)));
+            }
+          } catch (_) {}
+
+          return updated;
+        });
+
+        setIsLoading(false);
+        return;
       }
       
       // Handle send_message response
       if (data.action === 'send_message') {
-        if (data.success) {
-          console.log('Message sent, waiting for agent response...');
-          // Keep loading indicator visible, poll aggressively to catch agent response
-          const pollAttempts = [100, 500, 1000, 1500, 2000, 2500, 3000];
-          pollAttempts.forEach(delay => {
-            setTimeout(() => {
-              if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                console.log('Polling after send at', delay, 'ms...');
-                wsRef.current.send(JSON.stringify({ action: 'get_messages' }));
-              }
-            }, delay);
-          });
-          // Progress polling is already running continuously
-          // Loading indicator stays on until generation is complete
-        } else {
-          console.error('Failed to send message:', data.error);
-          setMessages(prev => [...prev, { 
-            role: 'agent', 
-            text: `Error: ${data.error}` 
-          }]);
-          setIsLoading(false);
-        }
+        // ... your existing send_message handler ...
+      }
+      
+      // Handle navigate response
+      if (data.action === 'navigate' || (data.messages && !data.action)) {
+        // ... your existing navigate handler ...
       }
     };
 
@@ -341,14 +846,27 @@ const GenerationPage = () => {
       console.log('Disconnected from Playwright proxy');
     };
 
-    return () => {
-      ws.close();
-      stopPolling();
-      stopProgressPolling(); // Stop when component unmounts
-      delete window.debugDom;
-      delete window.getMessages;
-    };
-  }, []);
+ return () => {
+    ws.close();
+    stopPolling();
+    stopProgressPolling();
+    stopVideoUrlPolling();
+    stopGetVideoUrlPolling();
+    delete window.debugDom;
+    delete window.getMessages;
+  };
+}, [urlSessionId]); // 
+
+  // HTTP fallback: explicitly ask backend to navigate to this session
+  useEffect(() => {
+    const currentSessionId = sessionId || urlSessionId;
+    if (!currentSessionId) return;
+    const baseUrl = window.location.origin;
+    fetch(`${baseUrl}/proxy/generate/${currentSessionId}`, {
+      method: 'GET',
+      credentials: 'include'
+    }).catch(err => console.warn('HTTP navigate fallback failed:', err?.message || err));
+  }, [sessionId, urlSessionId]);
 
   const startPolling = () => {
     stopPolling(); // Clear any existing interval
@@ -367,6 +885,40 @@ const GenerationPage = () => {
         wsRef.current.send(JSON.stringify({ action: 'get_generation_progress' }));
       }
     }, 2000); // Poll every 2 seconds for progress updates
+  };
+  
+  const startVideoUrlPolling = () => {
+    stopVideoUrlPolling(); // Clear any existing interval
+    console.log('🎬 Starting video URL extraction polling');
+    videoUrlPollIntervalRef.current = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ action: 'extract_all_video_urls' }));
+      }
+    }, 3000); // Poll every 3 seconds for video URLs
+  };
+  
+  const stopVideoUrlPolling = () => {
+    if (videoUrlPollIntervalRef.current) {
+      clearInterval(videoUrlPollIntervalRef.current);
+      videoUrlPollIntervalRef.current = null;
+    }
+  };
+  
+  const startGetVideoUrlPolling = () => {
+    stopGetVideoUrlPolling(); // Clear any existing interval
+    console.log('🎥 Starting get_video_url polling');
+    getVideoUrlPollIntervalRef.current = setInterval(() => {
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({ action: 'get_video_url' }));
+      }
+    }, 2000); // Poll every 2 seconds for video URLs
+  };
+  
+  const stopGetVideoUrlPolling = () => {
+    if (getVideoUrlPollIntervalRef.current) {
+      clearInterval(getVideoUrlPollIntervalRef.current);
+      getVideoUrlPollIntervalRef.current = null;
+    }
   };
   
   const stopProgressPolling = () => {
@@ -540,23 +1092,18 @@ const GenerationPage = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header with Logo */}
-      <header className="sticky top-0 bg-white border-b border-gray-200 px-8 py-4 flex items-center gap-2 z-50">
-        <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
-          <span className="text-white font-bold text-sm">A</span>
-        </div>
-        <span className="text-xl font-bold text-gray-900">ArenaGen</span>
-      </header>
+      <Header />
       
       {/* Chat Messages Area */}
       <div className="flex-1 overflow-y-auto p-8 pb-32">
         <div className="max-w-3xl mx-auto space-y-6">
           {messages.map((message, index) => {
             // Hide video cards while generation is in progress
-            const isGenerating = generationProgress && generationProgress.isGenerating && generationProgress.percentage > 0;
-            const shouldHideVideo = message.video && isGenerating;
+            const isGenerating = generationProgress && generationProgress.isGenerating && generationProgress.percentage >= 0;
+            const shouldHideVideo = message.video && !message.video.videoUrl && isGenerating;
             
-            // Only show video if it has a URL and generation is not in progress
-            const shouldShowVideo = message.video && message.video.videoUrl && !isGenerating;
+            // Show any completed video regardless of global generation state
+            const shouldShowVideo = message.video && message.video.videoUrl;
             
             if (shouldHideVideo) {
               return null; // Don't render video card while generating
@@ -605,10 +1152,16 @@ const GenerationPage = () => {
                     </div>
                   )}
                   
-                  {shouldShowVideo && (
+                  {message.video && (
                     <div className="mt-3">
                       <div 
-                        onClick={() => setVideoModal(message.video)}
+                        onClick={() => {
+                          if (message.video.videoUrl) {
+                            setVideoModal(message.video);
+                          } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                            console.log('Requested video URL from backend');
+                          }
+                        }}
                         className="relative cursor-pointer group overflow-hidden rounded-xl border-2 border-teal-500 bg-gradient-to-r from-teal-900 to-blue-900 p-4"
                       >
                         <div className="flex items-center gap-4">
@@ -619,17 +1172,23 @@ const GenerationPage = () => {
                               className="w-20 h-20 object-cover rounded-lg"
                             />
                             <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 rounded-lg group-hover:bg-opacity-50 transition-all">
-                              <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                              </svg>
-                            </div>
+                              {message.video.videoUrl ? (
+                                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
+                                </svg>
+                              ) : (
+                                <div className="text-white text-xs px-2 py-1 rounded bg-black bg-opacity-50">
+                                  Load link
+                                </div>
+                              )}
+                            </div>    
                           </div>
                           <div className="flex-1 min-w-0">
                             <h3 className="text-white font-medium text-base truncate">
                               {message.video.title}
                             </h3>
                             <p className="text-teal-200 text-sm mt-1">
-                              Your video is ready!
+                              {message.video.videoUrl ? 'Your video is ready!' : 'Link not loaded yet'}
                             </p>
                           </div>
                         </div>

@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import HomePage from './components/HomePage';
 import GenerationPage from './components/GenerationPage';
+import GalleryPage from './components/GalleryPage';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 
 function ProtectedRoute({ children }) {
@@ -64,7 +65,8 @@ function App() {
   return (
     <Routes>
       <Route path="/home" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-      <Route path="/generate" element={<ProtectedRoute><GenerationPage /></ProtectedRoute>} />
+      <Route path="/generate/:sessionId?" element={<ProtectedRoute><GenerationPage /></ProtectedRoute>} />
+      <Route path="/gallery" element={<ProtectedRoute><GalleryPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/home" replace />} />
     </Routes>
   );

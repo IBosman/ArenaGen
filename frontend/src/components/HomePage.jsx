@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import Header from './Header';
 
 const HomePage = () => {
   const [prompt, setPrompt] = useState('');
@@ -40,8 +41,8 @@ const HomePage = () => {
         }
         console.log('✅ Files uploaded successfully');
         
-        // Wait for HeyGen to process the uploaded file
-        console.log('⏳ Waiting for HeyGen to process file...');
+        // Wait for ArenaGen to process the uploaded file
+        console.log('⏳ Waiting for ArenaGen to process file...');
         await new Promise(resolve => setTimeout(resolve, 5000));
       }
       
@@ -109,29 +110,7 @@ const HomePage = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="sticky top-0 left-0 right-0 p-6 flex items-center justify-between bg-white z-50">
-        {/* Logo */}
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
-            <span className="text-white font-bold text-sm">A</span>
-          </div>
-          <span className="text-xl font-bold text-gray-900">ArenaGen</span>
-        </div>
-        
-        {/* Right side buttons */}
-        <div className="flex items-center gap-4">
-        <button className="flex items-center gap-2 text-gray-700 hover:text-gray-900 text-sm">
-          <span>EN</span>
-          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-        <button className="px-4 py-2 text-sm text-gray-700 hover:text-gray-900 border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-          Community
-        </button>
-        </div>
-      </header>
-
+      <Header />
       {/* Main Content */}
       <main className="flex flex-col items-center justify-center min-h-screen px-4">
         <div className="w-full max-w-3xl space-y-8">
@@ -255,17 +234,7 @@ const HomePage = () => {
         </div>
       </main>
 
-      {/* Floating Action Button */}
-      <button className="fixed bottom-8 right-8 w-12 h-12 bg-black text-white rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center justify-center">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </button>
 
-      {/* Bottom Text */}
-      <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-500">
-        <span>search</span>
-      </div>
     </div>
   );
 };

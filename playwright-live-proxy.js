@@ -528,6 +528,17 @@ async function loadUserCookies(userEmail) {
   return cookies;
 }
 
+// Browser context options (shared across all contexts)
+const BROWSER_CONTEXT_OPTIONS = {
+  viewport: { width: 1920, height: 1080 },
+  userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.5993.90 Safari/537.36',
+  locale: 'en-US',
+  timezoneId: 'America/New_York',
+  permissions: ['clipboard-read', 'clipboard-write'],
+  bypassCSP: true,
+  ignoreHTTPSErrors: true
+};
+
 // Get or create user session with isolated context
 async function getUserSession(userEmail) {
   if (!userEmail) {
@@ -561,17 +572,11 @@ async function getUserSession(userEmail) {
   const cookies = await loadUserCookies(userEmail);
   
   const context = await browser.newContext({
+    ...BROWSER_CONTEXT_OPTIONS,
     storageState: {
       cookies: cookies,
       origins: []
-    },
-    userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    viewport: { width: 1920, height: 1080 },
-    locale: 'en-US',
-    timezoneId: 'America/New_York',
-    permissions: ['clipboard-read', 'clipboard-write'],
-    bypassCSP: true,
-    ignoreHTTPSErrors: true
+    }
   });
 
   const page = await context.newPage();
@@ -691,8 +696,16 @@ async function initBrowser(httpServer = null) {
     headless: true,
     args: [
       '--disable-blink-features=AutomationControlled',
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
       '--disable-dev-shm-usage',
-      '--no-sandbox'
+      '--disable-gpu',
+      '--disable-software-rasterizer',
+      '--disable-background-timer-throttling',
+      '--disable-renderer-backgrounding',
+      '--disable-backgrounding-occluded-windows',
+      '--disable-extensions',
+      '--blink-settings=imagesEnabled=false'
     ]
   });
 
@@ -704,9 +717,6 @@ async function initBrowser(httpServer = null) {
   console.log('🎭 Browser ready - contexts will be created per-user!');
   console.log('📊 Per-user isolation enabled - each user gets their own browser context');
 }
-
-// IMPORTANT: Remove the duplicate ws.onopen and ws.onmessage handlers that appear after this function
-// Keep only the setupWebSocketHandler function for message handling
 
 // Reload browser context with fresh cookies (called after login)
 async function reloadBrowserContext() {
@@ -1111,34 +1121,48 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
         const tokenData = verifyToken(arenaToken);
         if (tokenData && tokenData.email) {
           userEmail = tokenData.email;
+          console.log(`🔑 Authenticated user: ${userEmail}`);
         }
       }
-    } catch (_) {}
+    } catch (err) {
+      console.error('Error parsing auth token:', err);
+    }
+    
+    // If we have an authenticated session, use it instead of anonymous
+    if (userEmail === 'anonymous' && userSessions.has('demo@arenagen.com')) {
+      console.log('🔑 Using demo@arenagen.com session instead of anonymous');
+      userEmail = 'demo@arenagen.com';
+    }
     
     console.log(`👤 Submitting prompt for user: ${userEmail}`);
     
-    // If user is authenticated and we have an anonymous session, migrate it
-    if (userEmail !== 'anonymous' && userSessions.has('anonymous')) {
-      const anonSession = userSessions.get('anonymous');
-      console.log(`🔄 Migrating anonymous session to: ${userEmail}`);
-      userSessions.set(userEmail, anonSession);
-      anonSession.userEmail = userEmail;
-      userSessions.delete('anonymous');
-    }
-    
-    // Check if session already exists (from WebSocket)
+    // Check if session already exists (from file upload or WebSocket)
     let session = userSessions.get(userEmail);
-    if (!session) {
-      // Only create new session if one doesn't exist
-      session = await getUserSession(userEmail);
-    } else {
+    if (session) {
       console.log(`♻️  Reusing existing session for: ${userEmail}`);
+    } else {
+      // If user is authenticated and we have an anonymous session, migrate it
+      if (userEmail !== 'anonymous' && userSessions.has('anonymous')) {
+        const anonSession = userSessions.get('anonymous');
+        console.log(`🔄 Migrating anonymous session to: ${userEmail}`);
+        userSessions.set(userEmail, anonSession);
+        anonSession.userEmail = userEmail;
+        userSessions.delete('anonymous');
+        session = anonSession;
+      } else {
+        // Only create new session if one doesn't exist
+        session = await getUserSession(userEmail);
+      }
     }
     const { page: submitPage } = session;
     
     // Navigate to home page only if not already there
     const currentUrl = submitPage.url();
-    if (!currentUrl.includes('app.heygen.com/home')) {
+    const isOnHome = currentUrl.includes('app.heygen.com/home');
+    const isOnAgent = currentUrl.includes('app.heygen.com/agent/');
+    
+    // If already on home or agent page, don't navigate (preserves attached images)
+    if (!isOnHome && !isOnAgent) {
       console.log('🌐 Navigating to home...');
       try {
         await submitPage.goto('https://app.heygen.com/home', { 
@@ -1154,8 +1178,10 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
           error: 'Not authenticated. Please login first at http://localhost:3000/auth to create session cookies.' 
         });
       }
-    } else {
+    } else if (isOnHome) {
       console.log('✅ Already on home page');
+    } else if (isOnAgent) {
+      console.log('✅ Already on agent page - submitting prompt here');
     }
     
     
@@ -2665,7 +2691,10 @@ async function handleWebSocketMessage(ws, data, session = null) {
             // Close the modal/player if there's a close button
             try {
               const closeButton = await videoPage.$('button[aria-label="Close"], button:has-text("Close"), [class*="close"]');
-              if (closeButton) await closeButton.click();
+              if (closeButton) {
+                await closeButton.click();
+                await videoPage.waitForTimeout(500); // Small delay after closing
+              }
             } catch (_) {}
             
             // Get the current URL to extract the username from the session
@@ -2823,10 +2852,15 @@ async function handleWebSocketMessage(ws, data, session = null) {
               throw new Error('No active browser session');
             }
             const uploadPage = session.page;
+            if (!uploadPage) {
+              ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'No active page in session' }));
+              return;
+            }
+            
             const currentUrl = uploadPage.url();
             if (!currentUrl.includes('/agent/')) {
               ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'Not on agent session page' }));
-              break;
+              return;
             }
             
             const files = data.files; // Array of {name, content (base64), type}
@@ -2922,9 +2956,15 @@ async function handleWebSocketMessage(ws, data, session = null) {
             }
             const sendPage = session.page;
             const currentUrl = sendPage.url();
+            
+            // If not on agent page, navigate to home first
             if (!currentUrl.includes('/agent/')) {
-              ws.send(JSON.stringify({ success: false, error: 'Not on agent session page' }));
-              break;
+              console.log('🌐 Not on agent page, navigating to home...');
+              await sendPage.goto('https://app.heygen.com/home', { 
+                waitUntil: 'domcontentloaded',
+                timeout: 30000 
+              });
+              await sendPage.waitForTimeout(2000);
             }
             
             const message = data.message;
@@ -2935,15 +2975,16 @@ async function handleWebSocketMessage(ws, data, session = null) {
             
             // Find and fill the input field
             const inputSelector = 'div[role="textbox"][contenteditable="true"]';
-            await sendPage.waitForSelector(inputSelector, { timeout: 5000 });
+            await sendPage.waitForSelector(inputSelector, { state: 'visible', timeout: 10000 });
             await sendPage.click(inputSelector);
             await sendPage.fill(inputSelector, message);
             
             // Wait a moment for the text to be entered
             await sendPage.waitForTimeout(500);
             
-            // Click the submit button
-            const buttonSelector = 'button[data-loading="false"].tw-bg-brand';
+            // Click the submit button - use a more specific selector
+            const buttonSelector = 'button[data-loading="false"].tw-bg-brand:not([disabled])';
+            await sendPage.waitForSelector(buttonSelector, { state: 'visible', timeout: 5000 });
             await sendPage.click(buttonSelector);
             
             console.log('✅ Message sent successfully');

@@ -1401,7 +1401,7 @@ const GenerationPage = () => {
           )}
 
           {/* Video generation preloader - shows when video is being generated */}
-          {(isGeneratingLocal || generationProgress?.isGenerating) && (
+          {/* {(isGeneratingLocal || generationProgress?.isGenerating) && (
             <div className="flex justify-start">
               <VideoGenerationPreloader
                 percentage={generationProgress?.percentage || 0}
@@ -1409,96 +1409,7 @@ const GenerationPage = () => {
                 currentStep={generationProgress?.currentStep || ''}
               />
             </div>
-          )}
-          
-          {/* Unified Progress/Video Card
-          {(() => {
-            // Debug: Log all messages to check video data
-            console.log('All messages:', JSON.stringify(messages, null, 2));
-            
-            // Find the last video message
-            const lastVideoMessage = [...messages].reverse().find(m => m?.video);
-            console.log('Last video message:', lastVideoMessage);
-            
-            // Show unified card if we have generation progress or a video message
-            if (isGeneratingLocal || generationProgress?.isGenerating || lastVideoMessage) {
-              console.log('Rendering video card with:', { 
-                hasVideoUrl: lastVideoMessage?.video?.videoUrl,
-                isGeneratingLocal,
-                generationProgress: generationProgress,
-                lastVideoMessage: lastVideoMessage
-              });
-              
-              // If we have a video URL, show the video card
-              if (lastVideoMessage?.video?.videoUrl) {
-                return (
-                  <div className="flex justify-start w-full">
-                    <div
-                      onClick={() => setVideoModal(lastVideoMessage.video)}
-                      className="cursor-pointer group relative rounded-2xl overflow-hidden border border-gray-200 hover:border-teal-500 transition-all hover:shadow-lg w-full max-w-sm"
-                    >
-                      <div className="relative w-full aspect-video bg-gray-900">
-                        <div className="w-full h-full flex items-center justify-center bg-gray-900">
-                          <img
-                            src={lastVideoMessage.video.poster || lastVideoMessage.video.thumbnail}
-                            alt={lastVideoMessage.video.title || 'Video thumbnail'}
-                            className="w-full h-full object-contain"
-                            onError={(e) => {
-                              // Only show fallback if both poster and thumbnail fail to load
-                              if (lastVideoMessage.video.poster && lastVideoMessage.video.poster !== e.target.src) {
-                                e.target.src = lastVideoMessage.video.poster;
-                              } else if (lastVideoMessage.video.thumbnail && lastVideoMessage.video.thumbnail !== e.target.src) {
-                                e.target.src = lastVideoMessage.video.thumbnail;
-                              } else {
-                                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI+PHBhdGggZD0iTTE5IDV2MTRINVY1aDhtMC0ySDVjLTEuMSAwLTIgLjktMiAydjE0YzAgMS4xLjkgMiAyIDJoMTRjMS4xIDAgMi0uOSAyLTJWNWMwLTEuMS0uOS0yLTItMnoiLz48cGF0aCBkPSJNMTAgMTVsNS0zLTUtM3Y2eiIvPjwvc3ZnPg=';
-                              }
-                            }}
-                          />
-                        </div>
-                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
-                          <div className="w-12 h-12 rounded-full bg-white bg-opacity-0 group-hover:bg-opacity-100 transition-all flex items-center justify-center">
-                            <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24">
-                              <path d="M8 5v14l11-7z" />
-                            </svg>
-                          </div>
-                        </div>
-                      </div>
-                      <div className="p-3 bg-white">
-                        <p className="text-sm font-medium text-gray-900 truncate">
-                          {lastVideoMessage.video.title || 'Your video is ready!'}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              
-              // Otherwise show the progress indicator
-              return (
-                <div className="flex justify-start w-full">
-                  <VideoGenerationPreloader
-                    percentage={generationProgress?.percentage || 0}
-                    message={generationProgress?.message || 'Our Video Agent is working on your video'}
-                    currentStep={generationProgress?.currentStep || ''}
-                  />
-                </div>
-              );
-            }
-             */}
-            {/* // Show standard preloader only when loading and no video message */}
-            {/* if (isLoading && !lastVideoMessage) {
-              return (
-                <div className="flex justify-start">
-                  <div className="bg-white text-gray-900 shadow-sm border border-gray-200 rounded-2xl rounded-bl-none px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                    </div>
-                  </div>
-                </div>
-             */}
-            {/* return null; */}
+          )} */}
           
           <div ref={messagesEndRef} />
         </div>

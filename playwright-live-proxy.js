@@ -853,7 +853,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: false,
+    headless: true,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',

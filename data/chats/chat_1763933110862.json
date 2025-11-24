@@ -1,0 +1,47 @@
+{
+  "id": "chat_1763933110862",
+  "updatedAt": "2025-11-23T21:54:47.238Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Make a ww2 doc",
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    },
+    {
+      "role": "agent",
+      "text": "Topic\tA short documentary overview of World War II, covering key events like the start of the war, major battles, and its global impact.\nAudience\tGeneral audience interested in history.\nMusic Theme\tSomber orchestral music to evoke the gravity of historical events.\nVideo Length\tApproximately 15 seconds (short-form documentary intro).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, including a narrated summary of WW2 highlights.\nTarget Language\tEnglish (United States).\nAvatar\tOne middle-aged male avatar dressed as a historian in a suit.\nVoice\tAdult male voice with a neutral American accent.\nSupplemental Footage (B-roll)\tStock media of historical WW2 footage, such as archival clips and maps.\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    },
+    {
+      "role": "agent",
+      "text": "You've reached the limit for Video Agent. To keep creating, you can add Generative Credits or switch to Unlimited Mode. Unlimited Mode only utilizes stock HeyGen Public Avatars and media from the HeyGen library.",
+      "video": null,
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    },
+    {
+      "role": "agent",
+      "text": "The video generation failed because the plan exceeded your Unlimited Plan limits. I have modified the plan to make it compliant with the rules.\n\nHere is the updated plan:\n\nTopic\tA short documentary overview of World War II, covering key events like the start of the war, major battles, and its global impact.\nAudience\tGeneral audience interested in history.\nMusic Theme\tSomber orchestral music to evoke the gravity of historical events.\nVideo Length\tApproximately 15 seconds (short-form documentary intro).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, including a narrated summary of WW2 highlights.\nTarget Language\tEnglish (United States).\nAvatar\tGeneric male avatar.\nVoice\tGeneric male voice.\nSupplemental Footage (B-roll)\tStock media of historical WW2 footage, such as archival clips and maps.\nCaptions\tEnabled.\n\nI changed the avatar from a custom one ('middle-aged male avatar dressed as a historian in a suit') to a 'generic male avatar' and the voice from a specific one ('Adult male voice with a neutral American accent') to a 'generic male voice'. The Unlimited Plan only allows for generic avatars and voices.\n\nDo you feel good with this modified plan? Yes or no?",
+      "video": null,
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    },
+    {
+      "role": "user",
+      "text": "Yes",
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    },
+    {
+      "role": "agent",
+      "text": "Great! Your video has been generated. Let me know what you think, or if you'd like to make any changes.",
+      "video": null,
+      "timestamp": "2025-11-23T21:54:47.237Z"
+    }
+  ],
+  "createdAt": "2025-11-23T21:25:10.866Z",
+  "name": "Make a ww2 doc"
+}

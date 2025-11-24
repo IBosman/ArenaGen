@@ -1,0 +1,57 @@
+{
+  "id": "chat_1763934931040",
+  "updatedAt": "2025-11-23T22:04:47.279Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Make a nature doc",
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from HeyGen. I can help you create a video.\n\nHere is a plan for your video:\n\nTopic\tNature Documentary\nAudience\tGeneral Audience\nMusic Theme\tCalming and inspirational\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated from the info.\nTarget Language\tEnglish (United States)\nAvatar\tA female park ranger\nVoice\tA calm and soothing adult female voice.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tenabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    },
+    {
+      "role": "agent",
+      "text": "You've reached the limit for Video Agent. To keep creating, you can add Generative Credits or switch to Unlimited Mode. Unlimited Mode only utilizes stock HeyGen Public Avatars and media from the HeyGen library.",
+      "video": null,
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    },
+    {
+      "role": "agent",
+      "text": "The video generation failed because the plan exceeds the limits of the Unlimited Plan. I have modified the plan to make it compliant.\n\nHere is the updated plan:\n\nTopic\tNature Documentary\nAudience\tGeneral Audience\nMusic Theme\tCalming and inspirational\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated from the info.\nTarget Language\tEnglish (United States)\nAvatar\tgeneric female avatar\nVoice\tgeneric female voice\nSupplemental Footage (B-roll)\tStock media\nCaptions\tenabled\n\nI changed the avatar from 'A female park ranger' to 'generic female avatar' and the voice from 'A calm and soothing adult female voice' to 'generic female voice' because custom avatars and voices are not permitted on the Unlimited Plan. Does this modified plan work for you?",
+      "video": {
+        "thumbnail": "https://resource2.heygen.ai/video/transcode/a3ef7e1ee1524f52a4e29905afc94b3f/va559d58afcfa407b879972edf2221bee/1080x1920.jpeg",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/a3ef7e1ee1524f52a4e29905afc94b3f/va559d58afcfa407b879972edf2221bee/1080x1920.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Awe-Inspiring%2520Nature.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/a3ef7e1ee1524f52a4e29905afc94b3f/va559d58afcfa407b879972edf2221bee/1080x1920.jpeg",
+        "title": "video"
+      },
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    },
+    {
+      "role": "agent",
+      "text": "Great! Your video has been generated. Let me know if you'd like to make any changes.",
+      "video": {
+        "thumbnail": "https://resource2.heygen.ai/video/transcode/a3ef7e1ee1524f52a4e29905afc94b3f/va559d58afcfa407b879972edf2221bee/1080x1920.jpeg",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/a3ef7e1ee1524f52a4e29905afc94b3f/va559d58afcfa407b879972edf2221bee/1080x1920.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Awe-Inspiring%2520Nature.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/a3ef7e1ee1524f52a4e29905afc94b3f/va559d58afcfa407b879972edf2221bee/1080x1920.jpeg",
+        "title": "video"
+      },
+      "timestamp": "2025-11-23T22:04:47.279Z"
+    }
+  ],
+  "createdAt": "2025-11-23T21:55:31.041Z",
+  "name": "Make a nature doc"
+}

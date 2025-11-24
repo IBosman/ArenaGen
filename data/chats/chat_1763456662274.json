@@ -1,0 +1,47 @@
+{
+  "id": "chat_1763456662274",
+  "updatedAt": "2025-11-18T09:14:22.592Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "make a nature doc",
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant by HeyGen. I can help you create a video.\n\nHere is a plan for your video.\n\nTopic\tNature Documentary\nAudience\tGeneral Audience\nMusic Theme\tCalming and inspirational\nVideo Length\troughly 15s\nVideo Orientation\tportrait\nScript Plan\tthe script will be automatically generated from the info, unless the user provided a script, in which case state that will use the user's provided script\nTarget Language\tEnglish (United States)\nAvatar\tA female park ranger\nVoice\tA calm and soothing adult female voice\nSupplemental Footage (B-roll)\tStock media\nCaptions\tenabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    },
+    {
+      "role": "agent",
+      "text": "You've reached the limit for Video Agent. To keep creating, you can add Generative Credits or switch to Unlimited Mode. Unlimited Mode only utilizes stock HeyGen Public Avatars and media from the HeyGen library.",
+      "video": null,
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    },
+    {
+      "role": "agent",
+      "text": "The video generation failed because the plan exceeded your plan's limits. I have modified the plan to make it compliant with the Unlimited Plan rules.\n\nHere is the modified video generation plan:\n\nTopic\tNature Documentary\nAudience\tGeneral Audience\nMusic Theme\tCalming and inspirational\nVideo Length\troughly 15s\nVideo Orientation\tportrait\nScript Plan\tthe script will be automatically generated from the info, unless the user provided a script, in which case state that will use the user's provided script\nTarget Language\tEnglish (United States)\nAvatar\tgeneric female avatar\nVoice\tgeneric female voice\nSupplemental Footage (B-roll)\tStock media\nCaptions\tenabled\n\nI changed the avatar from \"A female park ranger\" to \"generic female avatar\" and the voice from \"A calm and soothing adult female voice\" to \"generic female voice\". Your plan does not allow for custom avatars or voices.\n\nDo you feel good with the modified plan? (yes/no)",
+      "video": null,
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    },
+    {
+      "role": "agent",
+      "text": "Great! Your video has been generated. Let me know if you'd like to make any changes.",
+      "video": null,
+      "timestamp": "2025-11-18T09:14:22.592Z"
+    }
+  ],
+  "createdAt": "2025-11-18T09:04:22.276Z",
+  "name": "make a nature doc"
+}

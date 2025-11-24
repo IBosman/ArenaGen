@@ -1,0 +1,47 @@
+{
+  "id": "chat_1763628788043",
+  "updatedAt": "2025-11-20T09:05:12.970Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Generate a nature doc",
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from HeyGen. I can help you create a video.\n\nHere is a plan for your nature documentary video:\n\nTopic\tNature Documentary\nAudience\tGeneral Audience\nMusic Theme\tCalm and inspiring\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tA female presenter in her 30s, dressed as a park ranger.\nVoice\tA calm and soothing adult female voice.\nSupplemental Footage (B-roll)\tStock media of beautiful nature scenes.\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    },
+    {
+      "role": "user",
+      "text": "y",
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    },
+    {
+      "role": "agent",
+      "text": "You've reached the limit for Video Agent. To keep creating, you can add Generative Credits or switch to Unlimited Mode. Unlimited Mode only utilizes stock HeyGen Public Avatars and media from the HeyGen library.",
+      "video": null,
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    },
+    {
+      "role": "agent",
+      "text": "The video generation failed because the plan exceeded your Unlimited Plan limits. I have modified the plan to make it compliant with the rules.\n\nHere is the updated plan:\n\nTopic\tNature Documentary\nAudience\tGeneral Audience\nMusic Theme\tCalm and inspiring\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tPortrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tGeneric female avatar\nVoice\tGeneric female voice\nSupplemental Footage (B-roll)\tStock media of beautiful nature scenes.\nCaptions\tEnabled\n\nI changed the custom avatar ('female presenter in her 30s, dressed as a park ranger') to a 'Generic female avatar' and the custom voice ('calm and soothing adult female voice') to a 'Generic female voice' because custom avatars and voices are not permitted under the Unlimited Plan.\n\nDo you feel good with this modified plan? (yes/no)",
+      "video": null,
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    },
+    {
+      "role": "agent",
+      "text": "Your nature documentary video has been generated successfully! Let me know if you'd like to edit it or create another one.",
+      "video": null,
+      "timestamp": "2025-11-20T09:05:12.970Z"
+    }
+  ],
+  "createdAt": "2025-11-20T08:53:08.047Z",
+  "name": "Generate a nature doc"
+}

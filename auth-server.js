@@ -217,7 +217,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -908,7 +908,7 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: true, 
+      headless: false, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -1090,9 +1090,14 @@ authRouter.post('/api/submit-prompt', async (req, res) => {
   try {
     const requestContext = await pwRequest.newContext();
     const baseUrl = req.baseUrl || 'http://localhost:3000';
+    const headers = { 'Content-Type': 'application/json' };
+    if (req.headers.referer) {
+      headers['Referer'] = req.headers.referer;
+    }
+    
     const proxyResponse = await requestContext.post(`${baseUrl}/proxy/submit-prompt`, {
       data: { prompt },
-      headers: { 'Content-Type': 'application/json' }
+      headers: headers
     });
     
     const proxyData = await proxyResponse.json();

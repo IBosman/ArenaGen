@@ -11,6 +11,7 @@ import { WebSocketServer } from 'ws';
 import fileUpload from 'express-fileupload';
 import axios from 'axios';
 import { createHash, createHmac } from 'crypto';
+import { saveChat, loadChat, listChats } from './utils/chatHistory.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +20,165 @@ const PORT = process.env.PORT || 3000;
 const COOKIES_FILE = path.join(__dirname, 'heygen-cookies.json');
 const TARGET = 'https://app.heygen.com';
 const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-me';
+
+
+
+// Helper function to merge video URLs into messages
+function mergeVideoUrls(messages, videoUrls) {
+  if (!videoUrls || videoUrls.length === 0) return messages;
+  if (!messages || !Array.isArray(messages)) return [];
+  
+  // Make a copy of videoUrls to avoid modifying the original
+  const availableVideos = [...videoUrls];
+  
+  // First, attach videos to messages that already have video placeholders
+  const result = messages.map(msg => {
+    if (msg.video && !msg.video.videoUrl) {
+      // Try to find a matching video by poster or title
+      const matchIndex = availableVideos.findIndex(v => 
+        v.poster === msg.video.poster || 
+        v.poster === msg.video.thumbnail ||
+        v.title === msg.video.title
+      );
+      
+      if (matchIndex !== -1) {
+        const matchedVideo = availableVideos[matchIndex];
+        availableVideos.splice(matchIndex, 1); // Remove used video
+        
+        return {
+          ...msg,
+          video: {
+            ...msg.video,
+            videoUrl: matchedVideo.videoUrl,
+            poster: matchedVideo.poster || msg.video.poster
+          }
+        };
+      }
+    }
+    return msg;
+  });
+  
+  // If we have any videos left, add them as separate messages
+  if (availableVideos.length > 0) {
+    console.log(`➕ Adding ${availableVideos.length} video-only messages`);
+    availableVideos.forEach(video => {
+      result.push({
+        role: 'assistant',
+        text: video.title || 'Your video is ready!',
+        timestamp: new Date().toISOString(),
+        video: {
+          videoUrl: video.videoUrl,
+          poster: video.poster,
+          title: video.title || 'Your video is ready!'
+        }
+      });
+    });
+  }
+  
+  return result;
+}
+
+// WebSocket message handler with chat saving functionality
+const originalHandleWebSocketMessage = handleWebSocketMessage;
+handleWebSocketMessage = async (ws, data, session = null) => {
+  try {
+    await originalHandleWebSocketMessage(ws, data, session);
+    
+    // Save after get_video_url to attach video URLs to messages
+    if (data.action === 'get_video_url' && session?.page) {
+      const extractedMessages = session.page._extractedMessages;
+      const videoUrls = session.page._videoUrls || [];
+      
+      console.log('🎬 [handleWebSocketMessage] Processing get_video_url response', {
+        hasSession: !!session,
+        hasPage: !!session?.page,
+        hasExtractedMessages: !!extractedMessages,
+        messageCount: extractedMessages?.length || 0,
+        videoUrlCount: videoUrls.length
+      });
+      
+      if (extractedMessages && Array.isArray(extractedMessages) && extractedMessages.length > 0 && videoUrls.length > 0) {
+        // Find the most recent video URL
+        const latestVideo = videoUrls[videoUrls.length - 1];
+        console.log('🎥 Latest video:', latestVideo);
+        
+        // Find the last agent message without a video URL
+        let updated = false;
+        for (let i = extractedMessages.length - 1; i >= 0; i--) {
+          const msg = extractedMessages[i];
+          if (msg.role === 'agent' && (!msg.video || !msg.video.videoUrl)) {
+            // Attach the video to this message
+            extractedMessages[i] = {
+              ...msg,
+              video: {
+                thumbnail: latestVideo.poster || latestVideo.thumbnail || '',
+                videoUrl: latestVideo.videoUrl,
+                poster: latestVideo.poster || latestVideo.thumbnail || '',
+                title: latestVideo.title || 'Your video is ready!'
+              }
+            };
+            console.log(`✅ Attached video to message ${i}: "${msg.text?.substring(0, 50)}..."`);
+            updated = true;
+            break;
+          }
+        }
+        
+        if (updated) {
+          const chatId = session.page._chatId || `chat_${Date.now()}`;
+          console.log(`💾 [handleWebSocketMessage] Updating chat ${chatId} with video URL`);
+          
+          try {
+            await saveChat(chatId, extractedMessages);
+            console.log(`✅ [handleWebSocketMessage] Successfully updated chat with video URL`);
+            
+            if (session?.page) {
+              session.page._chatId = chatId;
+              // Update the stored messages
+              session.page._extractedMessages = extractedMessages;
+            }
+          } catch (error) {
+            console.error('❌ [handleWebSocketMessage] Error updating chat with video:', error.message);
+          }
+        } else {
+          console.log('⚠️ No agent message without video found to attach to');
+        }
+      }
+    }
+    
+    // Save after get_messages (initial capture of messages)
+    if (data.action === 'get_messages' && session?.page) {
+      const extractedMessages = session.page._extractedMessages;
+      
+      console.log('📬 [handleWebSocketMessage] Processing get_messages response', {
+        hasSession: !!session,
+        hasPage: !!session?.page,
+        hasExtractedMessages: !!extractedMessages,
+        messageCount: extractedMessages?.length || 0
+      });
+      
+      if (extractedMessages && Array.isArray(extractedMessages) && extractedMessages.length > 0) {
+        console.log(`✅ Found ${extractedMessages.length} messages to save`);
+        const chatId = session.page._chatId || `chat_${Date.now()}`;
+        console.log(`💾 [handleWebSocketMessage] Saving ${extractedMessages.length} messages to chat ${chatId}`);
+        
+        try {
+          await saveChat(chatId, extractedMessages);
+          console.log(`✅ [handleWebSocketMessage] Successfully saved chat ${chatId}`);
+          
+          if (session?.page) {
+            session.page._chatId = chatId;
+          }
+        } catch (error) {
+          console.error('❌ [handleWebSocketMessage] Error saving chat:', error.message);
+        }
+      }
+    }
+    
+  } catch (error) {
+    console.error('❌ [handleWebSocketMessage] Error in message handler:', error.message);
+    // Don't rethrow - let the WebSocket continue working
+  }
+};
 
 // Ensure uploads directory exists
 const UPLOADS_DIR = path.join(__dirname, 'uploads');
@@ -693,7 +853,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: true,
+    headless: false,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -1104,12 +1264,14 @@ proxyRouter.get('/', (req, res) => {
 // HTTP endpoint to submit initial prompt (called by auth server)
 proxyRouter.post('/submit-prompt', async (req, res) => {
   const { prompt } = req.body;
+  const referer = req.headers.referer || '';
+  const isFromHomePage = referer.includes('/home');
   
   if (!prompt) {
     return res.json({ success: false, error: 'Prompt is required' });
   }
   
-  console.log('📝 Received submit-prompt request:', prompt);
+  console.log(`📝 Received submit-prompt request: ${prompt}${isFromHomePage ? ' (from home page)' : ''}`);
   
   try {
     if (!browser) {
@@ -1165,13 +1327,13 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     }
     const { page: submitPage } = session;
     
-    // Navigate to home page only if not already there
+    // Navigate to home page if not already there or if request is coming from home page
     const currentUrl = submitPage.url();
     const isOnHome = currentUrl.includes('app.heygen.com/home');
     const isOnAgent = currentUrl.includes('app.heygen.com/agent/');
     
-    // If already on home or agent page, don't navigate (preserves attached images)
-    if (!isOnHome && !isOnAgent) {
+    // Always navigate to home page if request is from home page, or if not on home/agent page
+    if (isFromHomePage || (!isOnHome && !isOnAgent)) {
       console.log('🌐 Navigating to home...');
       try {
         await submitPage.goto('https://app.heygen.com/home', { 
@@ -1732,84 +1894,123 @@ async function handleWebSocketMessage(ws, data, session = null) {
           messages = await page.evaluate(() => {
             // Get all chat rows AND video cards in order
             const allElements = Array.from(
-              document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-border-brand.tw-bg-more-brandLighter')
+              document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-border-brand.tw-bg-more-brandLighter, textarea, [contenteditable="true"]')
             );
             
-            const allMessages = allElements.map(row => {
-              // Check if this is a video card (not a chat row)
-              if (row.classList.contains('tw-border-brand') && row.classList.contains('tw-bg-more-brandLighter')) {
-                // Only return video messages if the <video> element exists (video is ready)
-                // Ignore thumbnail-only placeholders (avatar_tmp) that appear during generation
-                const videoElement = row.querySelector('video');
-                if (videoElement) {
-                  const videoPoster = videoElement.poster;
-                  const titleElement = row.querySelector('.tw-text-base.tw-font-bold.tw-tracking-tight');
-                  const subtitleElement = row.querySelector('.tw-text-sm.tw-font-medium.tw-text-textBody span');
-                  const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
-                  
-                  return {
-                    role: 'agent',
-                    text: subtitleElement ? subtitleElement.innerText.trim() : '',
-                    video: {
-                      thumbnail: videoPoster,
-                      videoUrl: null,
-                      poster: videoPoster,
-                      title: title
-                    }
-                  };
+            const allMessages = [];
+            
+            for (const row of allElements) {
+              try {
+                // Handle video cards
+                if (row.classList.contains('tw-border-brand') && row.classList.contains('tw-bg-more-brandLighter')) {
+                  const videoElement = row.querySelector('video');
+                  if (videoElement) {
+                    const videoPoster = videoElement.poster;
+                    const titleElement = row.querySelector('.tw-text-base.tw-font-bold.tw-tracking-tight');
+                    const subtitleElement = row.querySelector('.tw-text-sm.tw-font-medium.tw-text-textBody span');
+                    const title = titleElement ? titleElement.innerText.trim() : 'Your video is ready!';
+                    
+                    allMessages.push({
+                      role: 'agent',
+                      text: subtitleElement ? subtitleElement.innerText.trim() : '',
+                      video: {
+                        thumbnail: videoPoster,
+                        videoUrl: null,
+                        poster: videoPoster,
+                        title: title
+                      },
+                      timestamp: new Date().toISOString()
+                    });
+                  }
+                  continue;
                 }
-                // Ignore thumbnail-only cards without video element - they're just placeholders
-                return null;
-              }
-              
-              // Regular chat row logic
-              const isUser = row.classList.contains('tw-justify-end');
-
-              if (isUser) {
-                const userBubble = row.querySelector('.tw-bg-fill-block');
-                const text = userBubble ? userBubble.innerText.trim() : '';
-                return text ? { role: 'user', text } : null;
-              }
+                
+                // Handle user input (textareas and contenteditables)
+                if (row.tagName === 'TEXTAREA' || row.getAttribute('contenteditable') === 'true') {
+                  const text = row.value || row.textContent || '';
+                  if (text.trim()) {
+                    allMessages.push({
+                      role: 'user',
+                      text: text.trim(),
+                      timestamp: new Date().toISOString()
+                    });
+                  }
+                  continue;
+                }
+                
+                // Regular chat messages
+                const isUser = row.classList.contains('tw-justify-end');
+                
+                if (isUser) {
+                  // Check for user input in various possible locations
+                  const userInput = row.querySelector('textarea, [contenteditable="true"], .tw-bg-fill-block, .tw-prose');
+                  let text = '';
+                  
+                  if (userInput) {
+                    text = userInput.value || userInput.textContent || '';
+                    text = text.trim();
+                  }
+                  
+                  if (text) {
+                    allMessages.push({
+                      role: 'user',
+                      text: text,
+                      timestamp: new Date().toISOString()
+                    });
+                  }
+                }
 
                   // agent - get main reply, skip reasoning. Use robust selector set and fallbacks.
-              const replySelectors = [
-                'div.tw-prose',
-                'div[role="region"] .tw-prose',
-                'div.tw-text-textTitle ~ div.tw-prose',
-                'div[class*="prose"]',
-                'div.tw-bg-fill-block:not(:has(textarea))',
-                'div[dir="auto"]'
-              ];
-              let replyEl = null;
-              for (const sel of replySelectors) {
-                const el = row.querySelector(sel);
-                // Skip elements inside the Reasoning section wrapper
-                const inReasoning = el && el.closest('div.tw-border-l-2.tw-border-line');
-                if (el && !inReasoning && el.innerText && el.innerText.trim().length > 0) { 
-                  replyEl = el; 
-                  break; 
-                }
-              }
-              // Fallback: pick the longest text node in the row excluding buttons/inputs
-              let text = '';
-              if (replyEl) {
-                text = replyEl.innerText.trim();
-              } else {
-                const blacklist = ['BUTTON', 'TEXTAREA', 'INPUT', 'SELECT'];
-                const textCandidates = [];
-                const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null);
-                while (walker.nextNode()) {
-                  const node = walker.currentNode;
-                  const parentTag = node.parentElement?.tagName || '';
-                  if (blacklist.includes(parentTag)) continue;
-                  const val = node.nodeValue?.trim() || '';
-                  if (val.length > 0) textCandidates.push(val);
-                }
-                if (textCandidates.length > 0) {
-                  // choose the longest chunk assuming it's the reply body
-                  text = textCandidates.sort((a,b) => b.length - a.length)[0];
-                }
+                if (!isUser) {
+                  const replySelectors = [
+                    'div.tw-prose',
+                    'div[role="region"] .tw-prose',
+                    'div.tw-text-textTitle ~ div.tw-prose',
+                    'div[class*="prose"]',
+                    'div.tw-bg-fill-block:not(:has(textarea))',
+                    'div[dir="auto"]'
+                  ];
+                  
+                  let replyEl = null;
+                  for (const sel of replySelectors) {
+                    const el = row.querySelector(sel);
+                    // Skip elements inside the Reasoning section wrapper
+                    const inReasoning = el && el.closest('div.tw-border-l-2.tw-border-line');
+                    if (el && !inReasoning && el.innerText && el.innerText.trim().length > 0) { 
+                      replyEl = el; 
+                      break; 
+                    }
                   }
+                  
+                  // Fallback: pick the longest text node in the row excluding buttons/inputs
+                  let text = '';
+                  if (replyEl) {
+                    text = replyEl.innerText.trim();
+                  } else {
+                    const blacklist = ['BUTTON', 'TEXTAREA', 'INPUT', 'SELECT'];
+                    const textCandidates = [];
+                    const walker = document.createTreeWalker(row, NodeFilter.SHOW_TEXT, null);
+                    while (walker.nextNode()) {
+                      const node = walker.currentNode;
+                      const parentTag = node.parentElement?.tagName || '';
+                      if (blacklist.includes(parentTag)) continue;
+                      const val = node.nodeValue?.trim() || '';
+                      if (val.length > 0) textCandidates.push(val);
+                    }
+                    if (textCandidates.length > 0) {
+                      // choose the longest chunk assuming it's the reply body
+                      text = textCandidates.sort((a,b) => b.length - a.length)[0];
+                    }
+                  }
+                  
+                  if (text) {
+                    allMessages.push({
+                      role: 'agent',
+                      text: text,
+                      timestamp: new Date().toISOString()
+                    });
+                  }
+                }
                   
               // Check for video completion card - navigate action
               let video = null;
@@ -1855,10 +2056,12 @@ async function handleWebSocketMessage(ws, data, session = null) {
                     }
                   }
                   
-                  return text || video ? { role: 'agent', text, video } : null;
-                }).filter(Boolean);
-
-                return { messages: allMessages };
+              } catch (err) {
+                console.error('Error processing message row:', err);
+              }
+            }
+            
+            return { messages: allMessages };
               });
               try {
                 const total = (fetchedMessages?.messages || []).length;
@@ -2208,13 +2411,105 @@ async function handleWebSocketMessage(ws, data, session = null) {
           console.log('📬 [get_messages] Fetching messages from current page');
           let fetchedMessages = null;
           try {
-            // Use passed session instead of creating new one
             if (!session?.page) {
               throw new Error('No active browser session');
             }
             const page = session.page;
             const currentUrl = page.url();
             console.log('🌐 [get_messages] Current URL:', currentUrl);
+            
+            // First, get the latest video URL from the page (similar to get_video_url)
+            let videoData = null;
+            try {
+              // Look for any video element on the page
+              videoData = await page.evaluate(() => {
+                const video = document.querySelector('video');
+                if (!video) return null;
+                
+                const src = video.src || video.querySelector('source')?.src || '';
+                if (!src || !src.includes('resource2.heygen.ai') || src.includes('liteSharePreviewAnimation')) {
+                  return null;
+                }
+                
+                // Try to get title from nearby elements
+                const titleEl = document.querySelector('.tw-text-base.tw-font-bold.tw-tracking-tight, h3, h4') ||
+                              video.closest('[data-testid="message"]')?.querySelector('h3, h4, .tw-font-bold');
+                
+                return {
+                  videoUrl: src,
+                  poster: video.poster || '',
+                  title: titleEl?.textContent?.trim() || 'Your video is ready!'
+                };
+              });
+              
+              if (videoData) {
+                console.log('🎥 [get_messages] Found video on page:', videoData.videoUrl);
+              } else {
+                console.log('🔍 [get_messages] No video found on page');
+              }
+            } catch (videoErr) {
+              console.error('❌ [get_messages] Error checking for video:', videoErr);
+            }
+            
+            // Get all messages
+            fetchedMessages = await page.evaluate(() => {
+              const messages = [];
+              const messageElements = document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-border-brand.tw-bg-more-brandLighter');
+              
+              messageElements.forEach(el => {
+                const isUser = el.classList.contains('tw-justify-end');
+                const textEl = el.querySelector('div.tw-prose, div.tw-text-textTitle div.tw-prose, [data-testid="message-text"]');
+                let text = textEl ? (textEl.textContent || '').trim() : '';
+                
+                // For user messages, also check input fields
+                if (isUser && !text) {
+                  const inputEl = el.querySelector('textarea, input[type="text"], [contenteditable="true"]');
+                  if (inputEl) {
+                    text = (inputEl.value || inputEl.textContent || '').trim();
+                  }
+                }
+                
+                // Skip empty messages that aren't from the user
+                if (!text && !isUser) return;
+                
+                messages.push({
+                  role: isUser ? 'user' : 'assistant',
+                  text: text || '',
+                  timestamp: new Date().toISOString()
+                });
+              });
+              
+              return messages;
+            });
+            
+            // If we found a video, attach it to the last assistant message
+            if (videoData && fetchedMessages && fetchedMessages.length > 0) {
+              // Find the last assistant message
+              for (let i = fetchedMessages.length - 1; i >= 0; i--) {
+                if (fetchedMessages[i].role === 'assistant') {
+                  fetchedMessages[i].video = videoData;
+                  console.log('✅ [get_messages] Attached video to last assistant message');
+                  break;
+                }
+              }
+            }
+            
+            // Store messages and video data for chat history
+            if (Array.isArray(fetchedMessages) && fetchedMessages.length > 0) {
+              page._extractedMessages = fetchedMessages;
+              // Store the video data if available
+              if (videoData) {
+                page._videoData = videoData;
+                console.log(`💾 [get_messages] Stored ${fetchedMessages.length} messages with video data`);
+              } else {
+                console.log(`💾 [get_messages] Stored ${fetchedMessages.length} messages (no video data)`);
+              }
+              
+              // Log how many messages have videos
+              const messagesWithVideos = fetchedMessages.filter(m => m.video?.videoUrl);
+              console.log(`🎥 [get_messages] ${messagesWithVideos.length} messages have video URLs attached`);
+            }
+            
             if (currentUrl.includes('/agent/')) {
               try {
                 await page.waitForSelector('.tw-bg-fill-block, div.tw-flex.tw-justify-start', { timeout: 2000 });
@@ -2290,8 +2585,21 @@ async function handleWebSocketMessage(ws, data, session = null) {
                 // Get all chat rows AND video cards in order (exclude hidden placeholders)
                 const allElements = Array.from(
                   document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-flex.tw-flex-col.tw-items-stretch.tw-rounded-2xl.tw-border.tw-border-line.tw-bg-fill-general.tw-cursor-pointer')
-                ).filter(el => !el.classList.contains('tw-hidden'));
-                console.log('[get_messages] Found', allElements.length, 'message rows');
+                ).filter(el => {
+                  // Skip hidden elements
+                  if (el.classList.contains('tw-hidden')) return false;
+                  
+                  // Skip elements that match the preloader pattern
+                  // Preloader has these exact classes: tw-flex tw-cursor-pointer tw-items-center tw-gap-x-1 tw-text-sm tw-text-textSupport
+                  const isPreloader = el.matches('.tw-flex.tw-cursor-pointer.tw-items-center.tw-gap-x-1.tw-text-sm.tw-text-textSupport');
+                  if (isPreloader) {
+                    console.log('[get_messages] Skipping preloader element');
+                    return false;
+                  }
+                  
+                  return true;
+                });
+                console.log('[get_messages] Found', allElements.length, 'message rows after filtering');
                 
                 // Helper to detect if an agent message is still being streamed (incomplete)
                 const isIncompleteMessage = (row) => {
@@ -2554,6 +2862,12 @@ async function handleWebSocketMessage(ws, data, session = null) {
                 // Clear the extracted video
                 delete page._extractedVideo;
               }
+            }
+            // Near line 1545, after: fetchedMessages = await page.evaluate(() => { ... });
+            // Store the properly filtered messages for chat history
+            if (fetchedMessages && fetchedMessages.messages && Array.isArray(fetchedMessages.messages)) {
+              page._extractedMessages = fetchedMessages.messages;
+              console.log(`💾 [get_messages] Stored ${fetchedMessages.messages.length} filtered messages in _extractedMessages`);
             }
           } catch (err) {
             fetchedMessages = { error: 'message_fetch_failed', details: String(err && err.message ? err.message : err) };
@@ -2849,6 +3163,19 @@ async function handleWebSocketMessage(ws, data, session = null) {
                     savedVideoPath = `/uploads/${userDirName}/${filename}`;
                   }
                 }
+
+
+                  // Store video data for chat history merging
+                if (!session.page._videoUrls) {
+                  session.page._videoUrls = [];
+                }
+                session.page._videoUrls.push({
+                  videoUrl: videoData.videoUrl,
+                  poster: videoData.poster,
+                  title: safeTitle
+                });
+                console.log('💾 Stored video data in _videoUrls for chat history');
+                
                 
                 // Return the local server URL to the frontend
                 ws.send(JSON.stringify({ 
@@ -2865,6 +3192,19 @@ async function handleWebSocketMessage(ws, data, session = null) {
               }
             } catch (saveError) {
               console.error('❌ Error in video processing:', saveError.message);
+              
+     // Store video data even if save failed
+              if (!session.page._videoUrls) {
+                session.page._videoUrls = [];
+              }
+              session.page._videoUrls.push({
+                videoUrl: videoData.videoUrl,
+                poster: videoData.poster,
+                title: safeTitle
+              });
+              console.log('💾 Stored video data in _videoUrls for chat history');
+              
+
               // Still send back the original HeyGen URL as fallback
               ws.send(JSON.stringify({ 
                 success: true, 
@@ -2877,6 +3217,13 @@ async function handleWebSocketMessage(ws, data, session = null) {
               }));
               return;
             }
+
+             // Store video data for chat history merging (fallback case)
+            if (!session.page._videoUrls) {
+              session.page._videoUrls = [];
+            }
+            session.page._videoUrls.push(videoData);
+            console.log('💾 Stored video data in _videoUrls for chat history');
             
             ws.send(JSON.stringify({ success: true, action: 'get_video_url', data: videoData }));
           } catch (err) {
@@ -3016,14 +3363,13 @@ async function handleWebSocketMessage(ws, data, session = null) {
               throw new Error('No active browser session');
             }
             const sendPage = session.page;
-            const currentUrl = sendPage.url();
             
-            // If not on agent page, navigate to home first
-            if (!currentUrl.includes('/agent/')) {
-              console.log('🌐 Not on agent page, navigating to home...');
+            // If user is on the home page in the frontend, navigate to HeyGen home
+            if (data.currentPath === '/home') {
+              console.log('🌐 User is on home page, navigating to HeyGen home to start new chat...');
               await sendPage.goto('https://app.heygen.com/home', { 
                 waitUntil: 'domcontentloaded',
-                timeout: 30000 
+                timeout: 30000
               });
               await sendPage.waitForTimeout(2000);
             }
@@ -3360,12 +3706,190 @@ async function handleWebSocketMessage(ws, data, session = null) {
               }));
             }
             break;
-        default:
-          ws.send(JSON.stringify({ error: 'Unknown action' }));
-      }
+
+          case 'find_and_click':
+            try {
+              if (!session?.page) {
+                throw new Error('No active browser session or page');
+              }
+              
+              const { page } = session;
+              // Using a more specific selector that matches the button text
+              const selector = data.selector || 'button:has-text("Make changes")';
+              const cssSelector = 'button:contains("Make changes")'; // For jQuery-like :contains
+              
+              // Check if we're using a Playwright-specific selector
+              const isPlaywrightSelector = selector.includes(':has-text(');
+              const finalSelector = isPlaywrightSelector 
+                ? 'button' // Fallback to generic button selector and we'll filter by text
+                : selector;
+              const timeout = data.timeout || 5000;
+              
+              
+              // Find all buttons and filter by text and visibility
+              const buttons = await page.$$('button');
+              
+              // Log first few buttons for debugging
+              for (let i = 0; i < Math.min(buttons.length, 10); i++) {
+                const text = await buttons[i].innerText();
+              }
+              
+              // Find the target button
+              let targetButton = null;
+              for (const btn of buttons) {
+                const text = (await btn.innerText()).trim();
+                const isVisible = await btn.isVisible();
+                console.log(`🔍 [find_and_click] Checking button: "${text}" (visible: ${isVisible})`);
+                
+                // Check if this button matches the requested selector text
+                const targetText = selector.includes(':has-text(') 
+                  ? selector.split('"')[1] // Extract text from selector like 'button:has-text("Continue with Unlimited")'
+                  : '';
+                
+                if (isVisible && (text.includes('Make changes') || (targetText && text.includes(targetText)))) {
+                  targetButton = btn;
+                  break;
+                }
+              }
+              
+              if (targetButton) {
+                console.log('✅ [find_and_click] Found target button, attempting to click...');
+                
+                try {
+                  // Scroll into view and wait
+                  await targetButton.scrollIntoViewIfNeeded();
+                  await page.waitForTimeout(500);
+                  
+                  // Try direct click first
+                  try {
+                    await targetButton.click({ timeout: 5000 });
+                    console.log('✅ [find_and_click] Successfully clicked the button');
+                  } catch (clickError) {
+                    console.warn('❌ [find_and_click] Direct click failed, trying JavaScript click:', clickError.message);
+                    
+                    // Fallback to JavaScript click
+                    await page.evaluate(btn => {
+                      btn.dispatchEvent(new MouseEvent('click', {
+                        view: window,
+                        bubbles: true,
+                        cancelable: true
+                      }));
+                    }, targetButton);
+                  }
+                  
+                  return ws.send(JSON.stringify({ 
+                    success: true, 
+                    action: 'find_and_click',
+                    message: 'Element found and clicked successfully'
+                  }));
+                } catch (error) {
+                  console.error('❌ [find_and_click] Error during button interaction:', error);
+                  throw error; // Let the outer catch handle it
+                }
+              } else {
+                const targetText = selector.includes(':has-text(') 
+                  ? selector.split('"')[1]
+                  : selector;
+                console.log(`⏳ [find_and_click] Button with text "${targetText}" not found or not visible`);
+                // Take a screenshot for debugging
+                try {
+                  const screenshot = await page.screenshot({ type: 'jpeg', quality: 30, fullPage: true });
+                  console.log(`📸 [find_and_click] Took screenshot of current page (${screenshot.length} bytes)`);
+                } catch (screenshotError) {
+                  console.error('❌ [find_and_click] Failed to take screenshot:', screenshotError);
+                }
+                
+                ws.send(JSON.stringify({ 
+                  success: false, 
+                  action: 'find_and_click',
+                  message: 'Element not found or not visible',
+                  selector,
+                  url: page.url()
+                }));
+              }
+            } catch (error) {
+              console.error('❌ Error in find_and_click:', error);
+              ws.send(JSON.stringify({ 
+                success: false, 
+                action: 'find_and_click',
+                error: error.message,
+                stack: error.stack
+              }));
+            }
+            break;
+
+          default:
+            console.log(`❌ Unknown action: ${action}`);
+            ws.send(JSON.stringify({ success: false, error: `Unknown action: ${action}` }));
+        }
 }
 
+// Chat history API endpoints
+proxyRouter.get('/api/chats', (req, res) => {
+  try {
+    const chats = listChats();
+    res.json({ success: true, chats });
+  } catch (error) {
+    console.error('Error listing chats:', error);
+    res.status(500).json({ success: false, error: 'Failed to list chats' });
+  }
+});
+
+proxyRouter.get('/api/chats/:chatId', (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const chat = loadChat(chatId);
+    if (!chat) {
+      return res.status(404).json({ success: false, error: 'Chat not found' });
+    }
+    res.json({ success: true, chat });
+  } catch (error) {
+    console.error('Error loading chat:', error);
+    res.status(500).json({ success: false, error: 'Failed to load chat' });
+  }
+});
+
+// Helper function to get messages using the get_messages action
+async function getChatMessages(page) {
+  try {
+    const messages = await page.evaluate(() => {
+      return new Promise((resolve) => {
+        const handleMessage = (event) => {
+          try {
+            const data = JSON.parse(event.data);
+            if (data.action === 'get_messages' && data.messages) {
+              window.removeEventListener('message', handleMessage);
+              resolve(data.messages);
+            }
+          } catch (e) {
+            console.error('Error parsing message:', e);
+          }
+        };
+        
+        window.addEventListener('message', handleMessage);
+        
+        // Send get_messages request
+        window.postMessage({ 
+          type: 'ws-message', 
+          data: JSON.stringify({ action: 'get_messages' }) 
+        }, '*');
+        
+        // Fallback in case we don't get a response
+        setTimeout(() => resolve([]), 1000);
+      });
+    });
+    
+    return Array.isArray(messages) ? messages : [];
+  } catch (error) {
+    console.error('Error getting messages:', error);
+    return [];
+  }
+}
+
+
+// ...
 export { proxyRouter, initBrowser, setupWebSocketServer };
+
 
 // API to list user's videos
 proxyRouter.get('/api/videos', async (req, res) => {
@@ -3448,7 +3972,36 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   initBrowser().then(() => {
     const server = createServer(app);
     server.listen(PORT, () => {
-      console.log(`Proxy server running on port ${PORT}`);
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌐 WebSocket server running on ws://localhost:${PORT}`);
+      console.log(`📁 Using data directory: ${__dirname}/data`);
+      console.log(`🔒 JWT secret: ${process.env.AUTH_SECRET ? 'Set' : 'Not set'}`);
+      
+      // Test saveChat function
+      (async () => {
+        try {
+          console.log('🧪 Testing saveChat function...');
+          const testChatId = 'test_chat_' + Date.now();
+          const testMessages = [
+            { role: 'user', text: 'Hello, world!', timestamp: new Date().toISOString() },
+            { role: 'assistant', text: 'Hi there!', timestamp: new Date().toISOString() }
+          ];
+          
+          console.log('💾 Saving test chat...');
+          const result = await saveChat(testChatId, testMessages);
+          if (result) {
+            console.log('✅ Test chat saved successfully:', result.path);
+            
+            // Try to load it back
+            const loaded = await loadChat(testChatId);
+            console.log('📝 Loaded test chat:', JSON.stringify(loaded, null, 2));
+          } else {
+            console.error('❌ Failed to save test chat');
+          }
+        } catch (error) {
+          console.error('❌ Error testing saveChat:', error);
+        }
+      })();
     });
   });
 }

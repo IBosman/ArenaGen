@@ -1,0 +1,47 @@
+{
+  "id": "chat_1763625438441",
+  "updatedAt": "2025-11-20T08:52:13.039Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "make a nature doc",
+      "timestamp": "2025-11-20T08:52:13.038Z"
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from HeyGen. I can help you create a video.\n\nHere is a plan for your nature documentary video:\n\nTopic\tNature documentary\nAudience\tGeneral audience\nMusic Theme\tCalming and instrumental\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tPortrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tA male narrator with a professional and engaging presence.\nVoice\tA calm, adult male voice.\nSupplemental Footage (B-roll)\tStock media featuring beautiful nature scenes.\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-11-20T08:52:13.039Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-20T08:52:13.039Z"
+    },
+    {
+      "role": "agent",
+      "text": "You've reached the limit for Video Agent. To keep creating, you can add Generative Credits or switch to Unlimited Mode. Unlimited Mode only utilizes stock HeyGen Public Avatars and media from the HeyGen library.",
+      "video": null,
+      "timestamp": "2025-11-20T08:52:13.039Z"
+    },
+    {
+      "role": "agent",
+      "text": "The video generation failed because the plan exceeded your plan's limits. I have modified the plan to make it compliant with the Unlimited Plan rules.\n\nHere is the modified plan:\n\nTopic\tNature documentary\nAudience\tGeneral audience\nMusic Theme\tCalming and instrumental\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tPortrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tgeneric male avatar\nVoice\tgeneric male voice\nSupplemental Footage (B-roll)\tStock media featuring beautiful nature scenes.\nCaptions\tEnabled\n\nI changed the Avatar from 'A male narrator with a professional and engaging presence' to 'generic male avatar' and the Voice from 'A calm, adult male voice' to 'generic male voice'. The Unlimited Plan only allows for generic avatars and voices. Does this modified plan look good to you, yes or no?",
+      "video": null,
+      "timestamp": "2025-11-20T08:52:13.039Z"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "timestamp": "2025-11-20T08:52:13.039Z"
+    },
+    {
+      "role": "agent",
+      "text": "Great! Your video has been generated. Let me know if you'd like to make any changes.",
+      "video": null,
+      "timestamp": "2025-11-20T08:52:13.039Z"
+    }
+  ],
+  "createdAt": "2025-11-20T07:57:18.445Z",
+  "name": "make a nature doc"
+}

@@ -62,10 +62,35 @@ function ProtectedRoute({ children }) {
 }
 
 function App() {
+  const location = useLocation();
+  const [allowGenerate, setAllowGenerate] = React.useState(false);
+  
+  // Check if coming from home page
+  React.useEffect(() => {
+    if (location.pathname === '/home') {
+      setAllowGenerate(true);
+    } else if (location.pathname.startsWith('/generate') && !allowGenerate) {
+      // If trying to access /generate without coming from home, redirect to home
+      setAllowGenerate(false);
+    }
+  }, [location.pathname]);
+
   return (
     <Routes>
-      <Route path="/home" element={<ProtectedRoute><HomePage /></ProtectedRoute>} />
-      <Route path="/generate/:sessionId?" element={<ProtectedRoute><GenerationPage /></ProtectedRoute>} />
+      <Route path="/home" element={
+        <ProtectedRoute>
+          <HomePage onNavigateToGenerate={() => setAllowGenerate(true)} />
+        </ProtectedRoute>
+      } />
+      <Route path="/generate/:sessionId?" element={
+        allowGenerate ? (
+          <ProtectedRoute>
+            <GenerationPage />
+          </ProtectedRoute>
+        ) : (
+          <Navigate to="/home" replace />
+        )
+      } />
       <Route path="/gallery" element={<ProtectedRoute><GalleryPage /></ProtectedRoute>} />
       <Route path="/" element={<Navigate to="/home" replace />} />
     </Routes>

@@ -34,29 +34,29 @@ const Header = () => {
         <span className="text-white font-bold text-sm">A</span>
       </div>
       <span className="text-xl font-bold text-gray-900">ArenaGen</span>
-      <div className="ml-auto relative">
+      <div className="ml-auto relative flex items-center gap-2">
         <button
           type="button"
-          className="px-3 py-2 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200"
+          className="px-3 py-2 rounded-md bg-gray-100 text-gray-700 hover:bg-gray-200 ml-auto"
+          aria-label="User menu"
+          aria-haspopup="true"
+          aria-expanded={menuOpen}
+          onClick={() => navigate('/gallery')}
+        >
+        History
+        </button>
+        <button
+          type="button"
+          className="px-3 py-2 rounded-md bg-blue-500 text-white hover:bg-blue-600"
           aria-label="User menu"
           aria-haspopup="true"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen(v => !v)}
         >
-          <span className="text-gray-700">{displayName || 'User'}</span>
+          <span className="text-white">{displayName || 'User'}</span>
         </button>
         {menuOpen && (
           <div className="origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5" role="menu" aria-orientation="vertical" aria-labelledby="user-menu">
-            <button
-              className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
-              role="menuitem"
-              onClick={() => {
-                setMenuOpen(false);
-                navigate('/gallery');
-              }}
-            >
-              Gallery
-            </button>
             <button
               className="w-full text-left block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
               role="menuitem"

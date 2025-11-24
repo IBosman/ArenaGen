@@ -1,0 +1,33 @@
+{
+  "id": "chat_1763932812901",
+  "updatedAt": "2025-11-23T21:20:57.755Z",
+  "messages": [
+    {
+      "role": "assistant",
+      "text": "Hi, I'm Video Agent, a helpful AI assistant by HeyGen. Let's create a short nature documentary video based on your request. Here's my proposed plan:\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nTopicA brief nature documentary exploring the beauty of a serene forest ecosystem, highlighting wildlife, plants, and natural sounds.AudienceGeneral viewers interested in nature and relaxation.Music ThemeCalming ambient nature sounds with soft instrumental undertones.Video LengthApproximately 30 seconds (short-form to fit auto duration; we can adjust later if needed).Video OrientationPortrait.Script PlanThe script will be automatically generated based on the topic, featuring a narrated overview of forest life with engaging, informative descriptions.Target LanguageEnglish (United States).AvatarOne adult narrator avatar: a friendly, middle-aged explorer in casual outdoor attire.VoiceNeutral adult male voice with a warm, engaging tone.Supplemental Footage (B-roll)Stock media of lush forests, animals, and flowing rivers to visualize the scenes.CaptionsEnabled.\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "timestamp": "2025-11-23T21:20:57.422Z"
+    },
+    {
+      "role": "assistant",
+      "text": "You've reached the limit for Video Agent. To keep creating, you can add Generative Credits or switch to Unlimited Mode.\nUnlimited Mode only utilizes stock HeyGen Public Avatars and media from the HeyGen library.",
+      "timestamp": "2025-11-23T21:20:57.422Z"
+    },
+    {
+      "role": "assistant",
+      "text": "The video generation failed because the plan exceeded your Unlimited Plan limits. I have modified the plan to make it compliant with the rules.\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\n\nTopicA brief nature documentary exploring the beauty of a serene forest ecosystem, highlighting wildlife, plants, and natural sounds.AudienceGeneral viewers interested in nature and relaxation.Music ThemeCalming ambient nature sounds with soft instrumental undertones.Video LengthApproximately 30 seconds.Video OrientationPortrait.Script PlanThe script will be automatically generated based on the topic, featuring a narrated overview of forest life with engaging, informative descriptions.Target LanguageEnglish (United States).AvatarGeneric male avatar.VoiceGeneric male voice.Supplemental Footage (B-roll)Stock media of lush forests, animals, and flowing rivers to visualize the scenes.CaptionsEnabled.\nI changed the Avatar from a custom description ('a friendly, middle-aged explorer in casual outdoor attire') to 'Generic male avatar' and the Voice from a custom description ('Neutral adult male voice with a warm, engaging tone') to 'Generic male voice'. The Unlimited Plan only allows for generic avatars and voices.\nDo you feel good with the modified plan, yes or no?",
+      "timestamp": "2025-11-23T21:20:57.422Z"
+    },
+    {
+      "role": "assistant",
+      "text": "Your nature documentary video has been generated successfully! Let me know if you'd like to make any edits or create something new.",
+      "timestamp": "2025-11-23T21:20:57.422Z",
+      "video": {
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/ceeb4a5ccb1d4b52a06f87af64d2659e/v680cddf96f754f39ae3797fcd56ad941/1080x1920.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Serene%2520Forest%2520Symphony.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/ceeb4a5ccb1d4b52a06f87af64d2659e/v680cddf96f754f39ae3797fcd56ad941/1080x1920.jpeg",
+        "title": "Serene Forest Symphony"
+      }
+    }
+  ],
+  "createdAt": "2025-11-23T21:20:12.902Z",
+  "name": "Make a nature doc"
+}

@@ -53,7 +53,9 @@ const HomePage = () => {
           'Content-Type': 'application/json',
         },
         credentials: 'include',
-        body: JSON.stringify({ prompt: prompt.trim() })
+        body: JSON.stringify({ 
+          prompt: prompt.trim()
+        })
       });
 
       const data = await response.json();

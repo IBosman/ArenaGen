@@ -3,6 +3,17 @@ import { useParams, useLocation } from 'react-router-dom';
 import VideoGenerationPreloader from './VideoGenerationPreloader';
 import Header from './Header';
 
+// Helper function to get WebSocket state name
+const getWebSocketStateName = (state) => {
+  switch(state) {
+    case WebSocket.CONNECTING: return 'CONNECTING';
+    case WebSocket.OPEN: return 'OPEN';
+    case WebSocket.CLOSING: return 'CLOSING';
+    case WebSocket.CLOSED: return 'CLOSED';
+    default: return `UNKNOWN (${state})`;
+  }
+};
+
 // Helper function to get cookie by name
 const getCookie = (name) => {
   const value = `; ${document.cookie}`;
@@ -50,13 +61,17 @@ const GenerationPage = () => {
     }
   }, [urlSessionId, sessionId]);
   const [generationProgress, setGenerationProgress] = useState(null);
+  const [isGeneratingLocal, setIsGeneratingLocal] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
+  const [newAgentMessageAdded, setNewAgentMessageAdded] = useState(false);
   const messagesEndRef = useRef(null);
   const wsRef = useRef(null);
   const pollIntervalRef = useRef(null);
   const progressPollIntervalRef = useRef(null);
   const videoUrlPollIntervalRef = useRef(null);
   const getVideoUrlPollIntervalRef = useRef(null);
+  const makeChangesPollIntervalRef = useRef(null);
+  const continueUnlimitedPollIntervalRef = useRef(null);
   const previousMessagesRef = useRef([]);
   const videoUrlsRef = useRef(new Map()); // Track video URLs by message ID
   const assignedUrlsRef = useRef(new Set()); // Track URLs already assigned to any message
@@ -152,6 +167,14 @@ const GenerationPage = () => {
       // Start get_video_url polling for all page loads
       console.log('🎥 Starting get_video_url polling');
       startGetVideoUrlPolling();
+      
+      // Start polling for 'Make changes' button
+      console.log('🔍 Starting Make changes button polling');
+      startMakeChangesPolling();
+      
+      // Start polling for 'Continue with Unlimited' button
+      console.log('🔍 Starting Continue with Unlimited button polling');
+      startContinueUnlimitedPolling();
       
       // Determine which session to load
       const savedSession = sessionStorage.getItem('currentSession');
@@ -424,8 +447,7 @@ const GenerationPage = () => {
           startVideoUrlPolling();
           startGetVideoUrlPolling();
           
-          // Stop loading state
-          setIsLoading(false);
+          // Do not force-stop loading here; let subsequent handlers decide when to stop
         } else {
           console.error('❌ Initial load failed:', data.error);
           // Fall back to normal polling
@@ -436,9 +458,8 @@ const GenerationPage = () => {
         return;
       }
       
-      // Handle get_messages response - FIX: Check for nested messages object
+      // Handle get_messages response
       if (data.action === 'get_messages') {
-        // Extract messages array from either data.messages directly OR data.messages.messages
         const messagesArray = Array.isArray(data.messages) 
           ? data.messages 
           : (data.messages && Array.isArray(data.messages.messages) 
@@ -446,16 +467,43 @@ const GenerationPage = () => {
             : []);
         
         if (messagesArray.length === 0) {
-          console.log('⚠️ No messages in get_messages response');
           return;
         }
         
-        // Check if a NEW agent message was added
-        const previousAgentCount = previousMessagesRef.current.filter(msg => msg.role === 'agent').length;
-        const newAgentCount = messagesArray.filter(msg => msg.role === 'agent').length;
-        const newAgentMessageAdded = newAgentCount > previousAgentCount;
+        // // Count agent messages
+        // const previousAgentCount = previousMessagesRef.current.filter(m => m.role === 'agent').length;
+        // const currentAgentCount = messagesArray.filter(m => m.role === 'agent').length;
         
-        // Process agent messages and restore video URLs
+        // // If we got a new agent message, stop loading
+        // if (currentAgentCount > previousAgentCount) {
+        //   console.log('✅ New agent message detected, stopping preloader');
+        //   setIsLoading(false);
+        //   setIsGeneratingLocal(false);
+        // }
+
+
+        // Check if we have any real agent messages (not just video cards)
+        const hasRealAgentMessage = messagesArray.some(m => 
+          m.role === 'agent' && (m.text || m.video?.videoUrl)
+        );
+
+        // Count current agent text messages
+        const currentAgentTextCount = messagesArray.filter(m => 
+          m.role === 'agent' && m.text && m.text.length > 0
+        ).length;
+
+        const previousAgentTextCount = previousMessagesRef.current.filter(m => 
+          m.role === 'agent' && m.text && m.text.length > 0
+        ).length;
+
+        // Stop loading if we got a new agent text message
+        if (currentAgentTextCount > previousAgentTextCount) {
+          console.log('✅ New agent message detected, stopping preloader');
+          setIsLoading(false);
+          setIsGeneratingLocal(false);
+        }
+        
+        // Continue with your existing message processing code...
         const sanitizedMessages = messagesArray.map(msg => {
           let processedMsg = msg;
           
@@ -640,10 +688,16 @@ const GenerationPage = () => {
         if (data.data.isGenerating) {
           setGenerationProgress(data.data);
           console.log('🎥 Video generation detected with', data.data.percentage + '%');
+          setIsGeneratingLocal(true);
         } else {
           const wasGenerating = generationProgress && generationProgress.isGenerating;
-          setGenerationProgress(null);
-          setIsLoading(false);
+          // Keep the progress data but mark as not generating
+          setGenerationProgress(prev => ({
+            ...(prev || {}),
+            ...data.data,
+            isGenerating: false
+          }));
+          // Do not force-stop loading on progress completion; wait for video URL or final agent message
           
           // Only trigger extraction ONCE when generation actually completes (not on every poll)
           if (wasGenerating && !data.data.isGenerating && initialLoadCompleteRef.current) {
@@ -726,7 +780,7 @@ const GenerationPage = () => {
           return updated;
         });
         
-        setIsLoading(false);
+        // Do not stop loading here; wait for a confirmed complete response or final URL
         return;
       }
       
@@ -827,8 +881,8 @@ const GenerationPage = () => {
 
           return updated;
         });
-
         setIsLoading(false);
+        setIsGeneratingLocal(false);
         return;
       }
       
@@ -857,6 +911,7 @@ const GenerationPage = () => {
     stopProgressPolling();
     stopVideoUrlPolling();
     stopGetVideoUrlPolling();
+    stopMakeChangesPolling();
     delete window.debugDom;
     delete window.getMessages;
   };
@@ -916,7 +971,7 @@ const GenerationPage = () => {
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.send(JSON.stringify({ action: 'get_video_url' }));
       }
-    }, 2000); // Poll every 2 seconds for video URLs
+    }, 1000); // Poll every 1 second for video URLs
   };
   
   const stopGetVideoUrlPolling = () => {
@@ -933,6 +988,108 @@ const GenerationPage = () => {
     }
   };
 
+  // Poll for 'Make changes' button and click it when found
+  const startMakeChangesPolling = () => {
+    console.log('🔍 [MakeChanges] 1. Entering startMakeChangesPolling');
+    debugger; // This will pause execution if dev tools are open
+    
+    stopMakeChangesPolling(); // Clear any existing interval
+    console.log('🔍 [MakeChanges] 2. Starting Make changes button polling');
+    
+    // Log WebSocket state
+    console.log(`🔍 [MakeChanges] 3. WebSocket state:`, {
+      wsRefExists: !!wsRef.current,
+      wsReadyState: wsRef.current ? wsRef.current.readyState : 'no wsRef',
+      location: window.location.href
+    });
+    
+    makeChangesPollIntervalRef.current = setInterval(() => {
+      const timestamp = new Date().toISOString();
+      console.log(`🔍 [MakeChanges] [${timestamp}] 4. Polling iteration`);
+      
+      if (!wsRef.current) {
+        console.log('🔍 [MakeChanges] 5. WebSocket not initialized, stopping polling');
+        stopMakeChangesPolling();
+        return;
+      }
+      
+      const wsState = wsRef.current.readyState;
+      console.log(`🔍 [MakeChanges] 6. WebSocket state: ${wsState} (${getWebSocketStateName(wsState)})`);
+      
+      if (wsState === WebSocket.OPEN) {
+        console.log('🔍 [MakeChanges] 7. Sending find_and_click request');
+        try {
+          wsRef.current.send(JSON.stringify({ 
+            action: 'find_and_click',
+            selector: 'button:has-text("Make changes")',
+            timeout: 2000,
+            timestamp: Date.now()
+          }));
+          console.log('🔍 [MakeChanges] 8. Successfully sent find_and_click request');
+        } catch (error) {
+          console.error('❌ [MakeChanges] Error sending find_and_click:', error);
+        }
+      } else {
+        console.log(`🔍 [MakeChanges] 9. WebSocket not ready, state: ${wsState} (${getWebSocketStateName(wsState)})`);
+      }
+    }, 2000); // Check every 2 seconds
+  };
+
+  const stopMakeChangesPolling = () => {
+    if (makeChangesPollIntervalRef.current) {
+      clearInterval(makeChangesPollIntervalRef.current);
+      makeChangesPollIntervalRef.current = null;
+    }
+  };
+
+  // Poll for 'Continue with Unlimited' button and click it when found
+  const startContinueUnlimitedPolling = () => {
+    console.log('🔍 [ContinueUnlimited] 1. Starting Continue with Unlimited button polling');
+    
+    stopContinueUnlimitedPolling(); // Clear any existing interval
+    
+    // Create a ref to store the interval ID
+    if (!continueUnlimitedPollIntervalRef.current) {
+      continueUnlimitedPollIntervalRef.current = setInterval(() => {
+        const timestamp = new Date().toISOString();
+        console.log(`🔍 [ContinueUnlimited] [${timestamp}] 2. Polling iteration`);
+        
+        if (!wsRef.current) {
+          console.log('🔍 [ContinueUnlimited] 3. WebSocket not initialized, stopping polling');
+          stopContinueUnlimitedPolling();
+          return;
+        }
+        
+        const wsState = wsRef.current.readyState;
+        console.log(`🔍 [ContinueUnlimited] 4. WebSocket state: ${wsState} (${getWebSocketStateName(wsState)})`);
+        
+        if (wsState === WebSocket.OPEN) {
+          console.log('🔍 [ContinueUnlimited] 5. Sending find_and_click request for Continue with Unlimited');
+          try {
+            wsRef.current.send(JSON.stringify({ 
+              action: 'find_and_click',
+              selector: 'button:has-text("Continue with Unlimited")',
+              timeout: 2000,
+              timestamp: Date.now()
+            }));
+            console.log('🔍 [ContinueUnlimited] 6. Successfully sent find_and_click request');
+          } catch (error) {
+            console.error('❌ [ContinueUnlimited] Error sending find_and_click:', error);
+          }
+        } else {
+          console.log(`🔍 [ContinueUnlimited] 7. WebSocket not ready, state: ${wsState} (${getWebSocketStateName(wsState)})`);
+        }
+      }, 2000); // Check every 2 seconds
+    }
+  };
+
+  const stopContinueUnlimitedPolling = () => {
+    if (continueUnlimitedPollIntervalRef.current) {
+      clearInterval(continueUnlimitedPollIntervalRef.current);
+      continueUnlimitedPollIntervalRef.current = null;
+    }
+  };
+
   const stopPolling = () => {
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
@@ -945,14 +1102,27 @@ const GenerationPage = () => {
 
     const userMessage = inputValue.trim();
     setInputValue('');
+    
+    // Reset all loading states
     setIsLoading(true);
-
-    // Add user message immediately
+    setIsGeneratingLocal(false);
+    setGenerationProgress(null);
+    
+    // Clear any previous agent messages to ensure we're starting fresh
     setMessages(prev => {
-      const updated = [...prev, { role: 'user', text: userMessage }];
-      previousMessagesRef.current = updated;
-      return updated;
+      const newMessages = prev.filter(msg => msg.role !== 'agent' || !msg.text.includes('Thinking...'));
+      return [...newMessages, { role: 'user', text: userMessage }];
     });
+    
+    // Update previous messages ref
+    previousMessagesRef.current = [...previousMessagesRef.current, { role: 'user', text: userMessage }];
+
+    // // Add user message immediately
+    // setMessages(prev => {
+    //   const updated = [...prev, { role: 'user', text: userMessage }];
+    //   previousMessagesRef.current = updated;
+    //   return updated;
+    // });
 
     try {
       // If we have an active session, upload files first if any
@@ -982,10 +1152,11 @@ const GenerationPage = () => {
           await new Promise(resolve => setTimeout(resolve, 2000));
         }
         
-        console.log('Sending message to existing session');
+        console.log('Sending message to existing session', window.location.pathname);
         wsRef.current.send(JSON.stringify({ 
           action: 'send_message', 
-          message: userMessage 
+          message: userMessage,
+          currentPath: window.location.pathname
         }));
       } else {
         // No session yet, upload files first if any
@@ -1102,23 +1273,11 @@ const GenerationPage = () => {
       {/* Chat Messages Area */}
       <div className="flex-1 overflow-y-auto p-8 pb-32">
         <div className="max-w-3xl mx-auto space-y-6">
-          {messages.map((message, index) => {
-            // Hide video cards while generation is in progress
-            const isGenerating = generationProgress && generationProgress.isGenerating && generationProgress.percentage >= 0;
-            const shouldHideVideo = message.video && !message.video.videoUrl && isGenerating;
-            
-            // Show any completed video regardless of global generation state
-            const shouldShowVideo = message.video && message.video.videoUrl;
-            
-            if (shouldHideVideo) {
-              return null; // Don't render video card while generating
-            }
-            
-            return (
-              <div
-                key={index}
-                className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-              >
+          {messages.map((message, index) => (
+            <div
+              key={index}
+              className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
                 <div
                   className={`max-w-[80%] rounded-2xl px-5 py-3 ${
                     message.role === 'user'
@@ -1157,75 +1316,189 @@ const GenerationPage = () => {
                     </div>
                   )}
                   
-                  {message.video && (
-                    <div className="mt-3">
-                      <div 
-                        onClick={() => {
-                          if (message.video.videoUrl) {
-                            setVideoModal(message.video);
-                          } else if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-                            console.log('Requested video URL from backend');
-                          }
-                        }}
-                        className="relative cursor-pointer group overflow-hidden rounded-xl border-2 border-teal-500 bg-gradient-to-r from-teal-900 to-blue-900 p-4"
-                      >
-                        <div className="flex items-center gap-4">
-                          <div className="relative flex-shrink-0">
-                            <img 
-                              src={message.video.thumbnail} 
-                              alt="Video thumbnail"
-                              className="w-20 h-20 object-cover rounded-lg"
-                            />
-                            <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30 rounded-lg group-hover:bg-opacity-50 transition-all">
-                              {message.video.videoUrl ? (
-                                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
-                                  <path d="M6.3 2.841A1.5 1.5 0 004 4.11V15.89a1.5 1.5 0 002.3 1.269l9.344-5.89a1.5 1.5 0 000-2.538L6.3 2.84z" />
-                                </svg>
-                              ) : (
-                                <div className="text-white text-xs px-2 py-1 rounded bg-black bg-opacity-50">
-                                  Load link
+                  {/* {message.video && (
+                    // Video messages are rendered in the unified progress/video card below
+                    null
+                  )} */}
+                  {/* Unified Progress/Video Card - now inline with message */}
+                  {message.video && (() => {
+                    // Show unified card if we have generation progress or a video message
+                    if (isGeneratingLocal || generationProgress?.isGenerating || message.video) {
+                      // If we have a video URL, show the video card
+                      if (message.video.videoUrl) {
+                        return (
+                          <div className="mt-3">
+                            <div
+                              onClick={() => setVideoModal(message.video)}
+                              className="cursor-pointer group relative rounded-2xl overflow-hidden border border-gray-200 hover:border-teal-500 transition-all hover:shadow-lg w-full max-w-sm"
+                            >
+                              <div className="relative w-full aspect-video bg-gray-900">
+                                <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                                  <img
+                                    src={message.video.poster || message.video.thumbnail}
+                                    alt={message.video.title || 'Video thumbnail'}
+                                    className="w-full h-full object-contain"
+                                    onError={(e) => {
+                                      if (message.video.poster && message.video.poster !== e.target.src) {
+                                        e.target.src = message.video.poster;
+                                      } else if (message.video.thumbnail && message.video.thumbnail !== e.target.src) {
+                                        e.target.src = message.video.thumbnail;
+                                      } else {
+                                        e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI+PHBhdGggZD0iTTE5IDV2MTRINVY1aDhtMC0ySDVjLTEuMSAwLTIgLjktMiAydjE0YzAgMS4xLjkgMiAyIDJoMTRjMS4xIDAgMi0uOSAyLTJWNWMwLTEuMS0uOS0yLTItMnoiLz48cGF0aCBkPSJNMTAgMTVsNS0zLTUtM3Y2eiIvPjwvc3ZnPg==';
+                                      }
+                                    }}
+                                  />
                                 </div>
-                              )}
-                            </div>    
+                                <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                                  <div className="w-12 h-12 rounded-full bg-white bg-opacity-0 group-hover:bg-opacity-100 transition-all flex items-center justify-center">
+                                    <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                                      <path d="M8 5v14l11-7z" />
+                                    </svg>
+                                  </div>
+                                </div>
+                              </div>
+                              <div className="p-3 bg-white">
+                                <p className="text-sm font-medium text-gray-900 truncate">
+                                  {message.video.title || 'Your video is ready!'}
+                                </p>
+                              </div>
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <h3 className="text-white font-medium text-base truncate">
-                              {message.video.title}
-                            </h3>
-                            <p className="text-teal-200 text-sm mt-1">
-                              {message.video.videoUrl ? 'Your video is ready!' : 'Link not loaded yet'}
-                            </p>
+                        );
+                      }
+                      
+                      // Otherwise show the progress indicator
+                      return (
+                        <div className="mt-3">
+                          <VideoGenerationPreloader
+                            percentage={generationProgress?.percentage || 0}
+                            message={generationProgress?.message || 'Our Video Agent is working on your video'}
+                            currentStep={generationProgress?.currentStep || ''}
+                          />
+                        </div>
+                      );
+                    }
+                    
+                    return null;
+                  })()}
+
+                </div>
+              </div>
+          ))}
+
+          {/* Standard preloader - KEEP THIS OUTSIDE, after the messages loop */}
+          {/* {isLoading && !messages.some(m => m.video) && ( */}
+          {isLoading && !messages.some(m => m.video) && !isGeneratingLocal && !generationProgress?.isGenerating && (
+            <div className="flex justify-start">
+              <div className="bg-white text-gray-900 shadow-sm border border-gray-200 rounded-2xl rounded-bl-none px-5 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Video generation preloader - shows when video is being generated */}
+          {(isGeneratingLocal || generationProgress?.isGenerating) && (
+            <div className="flex justify-start">
+              <VideoGenerationPreloader
+                percentage={generationProgress?.percentage || 0}
+                message={generationProgress?.message || 'Our Video Agent is working on your video'}
+                currentStep={generationProgress?.currentStep || ''}
+              />
+            </div>
+          )}
+          
+          {/* Unified Progress/Video Card
+          {(() => {
+            // Debug: Log all messages to check video data
+            console.log('All messages:', JSON.stringify(messages, null, 2));
+            
+            // Find the last video message
+            const lastVideoMessage = [...messages].reverse().find(m => m?.video);
+            console.log('Last video message:', lastVideoMessage);
+            
+            // Show unified card if we have generation progress or a video message
+            if (isGeneratingLocal || generationProgress?.isGenerating || lastVideoMessage) {
+              console.log('Rendering video card with:', { 
+                hasVideoUrl: lastVideoMessage?.video?.videoUrl,
+                isGeneratingLocal,
+                generationProgress: generationProgress,
+                lastVideoMessage: lastVideoMessage
+              });
+              
+              // If we have a video URL, show the video card
+              if (lastVideoMessage?.video?.videoUrl) {
+                return (
+                  <div className="flex justify-start w-full">
+                    <div
+                      onClick={() => setVideoModal(lastVideoMessage.video)}
+                      className="cursor-pointer group relative rounded-2xl overflow-hidden border border-gray-200 hover:border-teal-500 transition-all hover:shadow-lg w-full max-w-sm"
+                    >
+                      <div className="relative w-full aspect-video bg-gray-900">
+                        <div className="w-full h-full flex items-center justify-center bg-gray-900">
+                          <img
+                            src={lastVideoMessage.video.poster || lastVideoMessage.video.thumbnail}
+                            alt={lastVideoMessage.video.title || 'Video thumbnail'}
+                            className="w-full h-full object-contain"
+                            onError={(e) => {
+                              // Only show fallback if both poster and thumbnail fail to load
+                              if (lastVideoMessage.video.poster && lastVideoMessage.video.poster !== e.target.src) {
+                                e.target.src = lastVideoMessage.video.poster;
+                              } else if (lastVideoMessage.video.thumbnail && lastVideoMessage.video.thumbnail !== e.target.src) {
+                                e.target.src = lastVideoMessage.video.thumbnail;
+                              } else {
+                                e.target.src = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0iI2ZmZiI+PHBhdGggZD0iTTE5IDV2MTRINVY1aDhtMC0ySDVjLTEuMSAwLTIgLjktMiAydjE0YzAgMS4xLjkgMiAyIDJoMTRjMS4xIDAgMi0uOSAyLTJWNWMwLTEuMS0uOS0yLTItMnoiLz48cGF0aCBkPSJNMTAgMTVsNS0zLTUtM3Y2eiIvPjwvc3ZnPg=';
+                              }
+                            }}
+                          />
+                        </div>
+                        <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
+                          <div className="w-12 h-12 rounded-full bg-white bg-opacity-0 group-hover:bg-opacity-100 transition-all flex items-center justify-center">
+                            <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
                           </div>
                         </div>
                       </div>
+                      <div className="p-3 bg-white">
+                        <p className="text-sm font-medium text-gray-900 truncate">
+                          {lastVideoMessage.video.title || 'Your video is ready!'}
+                        </p>
+                      </div>
                     </div>
-                  )}
+                  </div>
+                );
+              }
+              
+              // Otherwise show the progress indicator
+              return (
+                <div className="flex justify-start w-full">
+                  <VideoGenerationPreloader
+                    percentage={generationProgress?.percentage || 0}
+                    message={generationProgress?.message || 'Our Video Agent is working on your video'}
+                    currentStep={generationProgress?.currentStep || ''}
+                  />
                 </div>
-              </div>
-            );
-          })}
-          
-          {/* Show video generation progress when available, otherwise show standard preloader */}
-          {generationProgress && generationProgress.isGenerating && generationProgress.percentage > 0 ? (
-            <VideoGenerationPreloader
-              percentage={generationProgress.percentage || 0}
-              message={generationProgress.message || 'Our Video Agent is working on your video'}
-              currentStep={generationProgress.currentStep || ''}
-            />
-          ) : (
-            /* Show standard preloader only when loading and no percentage preloader */
-            isLoading && (
-              <div className="flex justify-start">
-                <div className="bg-white text-gray-900 shadow-sm border border-gray-200 rounded-2xl rounded-bl-none px-5 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                    <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+              );
+            }
+             */}
+            {/* // Show standard preloader only when loading and no video message */}
+            {/* if (isLoading && !lastVideoMessage) {
+              return (
+                <div className="flex justify-start">
+                  <div className="bg-white text-gray-900 shadow-sm border border-gray-200 rounded-2xl rounded-bl-none px-5 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                      <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )
-          )}
+             */}
+            {/* return null; */}
           
           <div ref={messagesEndRef} />
         </div>

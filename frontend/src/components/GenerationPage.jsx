@@ -1757,6 +1757,7 @@ const GenerationPage = () => {
           const PROXY_HTTP_BASE = process.env.REACT_APP_PROXY_HTTP_BASE || `${baseUrl}/proxy`;
           const uploadResponse = await fetch(`${PROXY_HTTP_BASE}/upload-files`, {
             method: 'POST',
+            credentials: 'include', // CRITICAL: Send auth cookies with request
             body: fileFormData
           });
           

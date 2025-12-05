@@ -941,7 +941,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: true,
+    headless: false,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -1380,13 +1380,14 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     }
     const { page: submitPage } = session;
     
-    // Navigate to home page if not already there or if request is coming from home page
+    // Navigate to home page ONLY if not already there
     const currentUrl = submitPage.url();
     const isOnHome = currentUrl.includes('app.heygen.com/home');
     const isOnAgent = currentUrl.includes('app.heygen.com/agent/');
     
-    // Always navigate to home page if request is from home page, or if not on home/agent page
-    if (isFromHomePage || (!isOnHome && !isOnAgent)) {
+    // CRITICAL FIX: Don't navigate if already on home page (files might be attached)
+    // Only navigate if we're not on home or agent page
+    if (!isOnHome && !isOnAgent) {
       console.log('🌐 Navigating to home...');
       try {
         await submitPage.goto('https://app.heygen.com/home', { 
@@ -1403,7 +1404,7 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
         });
       }
     } else if (isOnHome) {
-      console.log('✅ Already on home page');
+      console.log('✅ Already on home page - keeping attached files');
     } else if (isOnAgent) {
       console.log('✅ Already on agent page - submitting prompt here');
     }

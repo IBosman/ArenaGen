@@ -31,6 +31,7 @@ const HomePage = () => {
         
         const uploadResponse = await fetch(`${PROXY_HTTP_BASE}/upload-files`, {
           method: 'POST',
+          credentials: 'include', // CRITICAL: Send auth cookies with request
           body: fileFormData
         });
         

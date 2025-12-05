@@ -570,8 +570,20 @@ const GenerationPage = () => {
         if (data.success && data.messages) {
           console.log('✅ Initial load complete, received', data.messages.length, 'messages');
           
+          // Filter out user messages that only have images (no text)
+          // These are duplicates - the image will appear in the message with text
+          const filteredMessages = data.messages.filter(msg => {
+            if (msg.role === 'user' && msg.images && msg.images.length > 0 && !msg.text) {
+              console.log('🚫 Filtering out image-only user message');
+              return false;
+            }
+            return true;
+          });
+          
+          console.log('📊 Filtered messages:', filteredMessages.length, 'from', data.messages.length);
+          
           // Process messages same way as get_messages
-          const sanitizedMessages = data.messages.map(msg => {
+          const sanitizedMessages = filteredMessages.map(msg => {
             let processedMsg = msg;
             if (msg.role === 'agent' && msg.text) {
               let text = msg.text;
@@ -735,8 +747,15 @@ const GenerationPage = () => {
                  (msg.video && !msg.video.videoUrl && text.includes('working on'));
         };
         
-        // Filter out composites and preloaders before processing
-        const filteredMessagesArray = messagesArray.filter(m => !isComposite(m) && !isPreloaderMessage(m));
+        const isImageOnlyMessage = (msg) => {
+          // Filter out user messages that only have images without text
+          // These are duplicates - the image will appear in the message with text
+          if (!msg || msg.role !== 'user') return false;
+          return msg.images && msg.images.length > 0 && !msg.text;
+        };
+        
+        // Filter out composites, preloaders, and image-only messages before processing
+        const filteredMessagesArray = messagesArray.filter(m => !isComposite(m) && !isPreloaderMessage(m) && !isImageOnlyMessage(m));
         console.log('📊 Filtered initial_load messages:', filteredMessagesArray.length, 'from', messagesArray.length);
         
         // If we have a plain prompt stored, add it if missing

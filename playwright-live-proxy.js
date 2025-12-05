@@ -941,7 +941,6 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    executablePath: "/usr/bin/chromium",
     headless: true,
     args: [
       // '--disable-blink-features=AutomationControlled',

@@ -1,0 +1,37 @@
+{
+  "id": "chat_1764855634944",
+  "title": "video",
+  "createdAt": "2025-12-04T13:40:34.945Z",
+  "updatedAt": "2025-12-04T13:42:32.423Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "make a demo video"
+    },
+    {
+      "role": "agent",
+      "text": "Hi! I'm Video Agent, here to help you create awesome videos with ArenaGen. Here's my proposed plan for your demo video:\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, with the avatar introducing herself and simple features.\nAudience\tGeneral users new to ArenaGen.\nMusic Theme\tUpbeat and modern electronic.\nVideo Length\tRoughly 15 seconds (short-form demo).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, featuring a friendly intro like \"Hi, I'm [avatar], powered by ArenaGen's Video Agent—let's create amazing videos together!\"\nTarget Language\tEnglish (United States).\nAvatar\t\nSunny Smile\n (female).\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tNo B-roll (focus on avatar).\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": {
+        "thumbnail": "https://resource2.heygen.ai/aws_pacific/avatar_tmp/c19f2191490142e7bdbf3d94b146848e/vc07605e88d1e4a02a856dbb69d94d3fe/fe1ea27cf78640439156f972c1d30ad2.jpeg",
+        "videoUrl": "https://resource2.heygen.ai/aws_pacific/avatar_tmp/c19f2191490142e7bdbf3d94b146848e/vc07605e88d1e4a02a856dbb69d94d3fe/caption_fe1ea27cf78640439156f972c1d30ad2.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27HeyGen%2520Video%2520Agent.mp4%3B",
+        "poster": "https://resource2.heygen.ai/aws_pacific/avatar_tmp/c19f2191490142e7bdbf3d94b146848e/vc07605e88d1e4a02a856dbb69d94d3fe/fe1ea27cf78640439156f972c1d30ad2.jpeg",
+        "title": "video"
+      }
+    },
+    {
+      "role": "user",
+      "text": "yes"
+    },
+    {
+      "role": "agent",
+      "text": "Your demo video has been generated successfully—check it out above! What would you like to do next: edit it, make a new one, or something else?",
+      "video": {
+        "thumbnail": "https://resource2.heygen.ai/aws_pacific/avatar_tmp/c19f2191490142e7bdbf3d94b146848e/vc07605e88d1e4a02a856dbb69d94d3fe/fe1ea27cf78640439156f972c1d30ad2.jpeg",
+        "videoUrl": "https://resource2.heygen.ai/aws_pacific/avatar_tmp/c19f2191490142e7bdbf3d94b146848e/vc07605e88d1e4a02a856dbb69d94d3fe/caption_fe1ea27cf78640439156f972c1d30ad2.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27HeyGen%2520Video%2520Agent.mp4%3B",
+        "poster": "https://resource2.heygen.ai/aws_pacific/avatar_tmp/c19f2191490142e7bdbf3d94b146848e/vc07605e88d1e4a02a856dbb69d94d3fe/fe1ea27cf78640439156f972c1d30ad2.jpeg",
+        "title": "video"
+      }
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

@@ -5,6 +5,7 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
   const [chats, setChats] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [chatToDelete, setChatToDelete] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -49,14 +50,56 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
     }
   }, [isOpen]);
 
+  // Handle chat deletion
+  const handleDeleteChat = async (chat) => {
+    if (!chat || !chat.id) {
+      console.error('Invalid chat object for delete:', chat);
+      return;
+    }
+
+    try {
+      const baseUrl = window.location.origin;
+      const response = await fetch(`${baseUrl}/proxy/api/chats/${chat.id}`, {
+        method: 'DELETE',
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        console.error('Failed to delete chat:', await response.text());
+        return;
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.error('Delete chat response not successful:', data);
+        return;
+      }
+
+      // Remove chat from local state
+      setChats(prev => prev.filter(c => c.id !== chat.id));
+
+      // If the deleted chat is the current one, navigate home
+      if (currentSessionId && chat.id.includes(currentSessionId)) {
+        navigate('/home');
+      }
+
+      // Clear pending delete state
+      setChatToDelete(null);
+    } catch (err) {
+      console.error('Error deleting chat:', err);
+    }
+  };
+
   // Handle chat selection
   const handleChatClick = (chat) => {
-    // Extract session ID from chat data
-    // Assuming the chatId or some field contains the session ID
-    const sessionId = chat.sessionId || chat.chatId.replace('chat_', '');
+    console.log('Chat clicked:', chat);
+    if (!chat || !chat.id) {
+      console.error('Invalid chat object:', chat);
+      return;
+    }
     
-    // Navigate to the chat
-    navigate(`/generate/${sessionId}`);
+    // Navigate to a special route that indicates we're loading from history
+    navigate(`/generate/${chat.id}?loadFromHistory=true`);
     
     // Close sidebar on mobile
     if (window.innerWidth < 768) {
@@ -168,10 +211,10 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
             <div className="divide-y divide-gray-100">
               {chats.map((chat) => (
                 <button
-                  key={chat.chatId}
+                  key={chat.id}
                   onClick={() => handleChatClick(chat)}
                   className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
-                    currentSessionId && chat.chatId.includes(currentSessionId)
+                    currentSessionId && chat.id.includes(currentSessionId)
                       ? 'bg-blue-50 border-l-4 border-blue-500'
                       : ''
                   }`}
@@ -179,7 +222,7 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-gray-900 truncate">
-                        {getChatPreview(chat)}
+                        {chat.title || chat.name || 'Untitled Chat'}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
                         <span className="text-xs text-gray-500">
@@ -196,18 +239,46 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
                       </div>
                     </div>
                     
-                    {/* Video indicator */}
-                    {chat.hasVideo && (
-                      <div className="flex-shrink-0">
+                    <div className="flex-shrink-0 flex items-center gap-2">
+                      {/* Video indicator */}
+                      {chat.hasVideo && (
+                        <div>
+                          <svg
+                            className="w-4 h-4 text-blue-500"
+                            fill="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path d="M8 5v14l11-7z" />
+                          </svg>
+                        </div>
+                      )}
+
+                      {/* Delete (trash) button */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          setChatToDelete(chat);
+                        }}
+                        className="p-1 rounded hover:bg-red-50 transition-colors"
+                        title="Delete chat"
+                      >
                         <svg
-                          className="w-4 h-4 text-blue-500"
-                          fill="currentColor"
+                          className="w-4 h-4 text-gray-400 hover:text-red-500"
+                          fill="none"
+                          stroke="currentColor"
                           viewBox="0 0 24 24"
                         >
-                          <path d="M8 5v14l11-7z" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5-3h4m-4 0a1 1 0 00-1 1v2h6V5a1 1 0 00-1-1m-4 0h4M9 10v8m6-8v8"
+                          />
                         </svg>
-                      </div>
-                    )}
+                      </button>
+                    </div>
                   </div>
                 </button>
               ))}
@@ -241,6 +312,40 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
           </button>
         </div>
       </div>
+
+      {chatToDelete && (
+        <div
+          className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4"
+          onClick={() => setChatToDelete(null)}
+        >
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete chat</h2>
+            <p className="text-sm text-gray-700 mb-6">
+              Are you sure you want to delete{' '}
+              <span className="font-medium">{chatToDelete.title || chatToDelete.name || 'this chat'}</span>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                onClick={() => setChatToDelete(null)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+                onClick={() => handleDeleteChat(chatToDelete)}
+              >
+                Yes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };

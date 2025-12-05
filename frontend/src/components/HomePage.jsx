@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Header from './Header';
+import ChatHistorySidebar from './ChatHistorySidebar';
 
 const HomePage = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [prompt, setPrompt] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [attachedFiles, setAttachedFiles] = useState([]);
@@ -111,6 +113,33 @@ const HomePage = () => {
 
   return (
     <div className="min-h-screen bg-white">
+      {/* Chat History Sidebar */}
+      <ChatHistorySidebar 
+        isOpen={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)} 
+      />
+      
+      {/* Menu Button */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="fixed top-4 left-4 z-30 p-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200"
+        title="Chat History"
+      >
+        <svg
+          className="w-6 h-6 text-gray-700"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 6h16M4 12h16M4 18h16"
+          />
+        </svg>
+      </button>
+      
       {/* Header */}
       <Header />
       {/* Main Content */}

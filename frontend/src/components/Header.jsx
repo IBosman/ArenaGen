@@ -31,9 +31,9 @@ const Header = () => {
   return (
     <header className="sticky top-0 bg-white border-b border-gray-200 px-8 py-4 flex items-center gap-2 z-50">
       <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-cyan-400 rounded-lg flex items-center justify-center">
-        <span className="text-white font-bold text-sm">A</span>
+        <a href="/home" className="text-white font-bold text-sm">A</a>
       </div>
-      <span className="text-xl font-bold text-gray-900">ArenaGen</span>
+      <a href="/home" className="text-xl font-bold text-gray-900">ArenaGen</a>
       <div className="ml-auto relative flex items-center gap-2">
         <button
           type="button"

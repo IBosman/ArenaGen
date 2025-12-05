@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useLocation } from 'react-router-dom';
+import { useParams, useLocation, useSearchParams } from 'react-router-dom';
 import VideoGenerationPreloader from './VideoGenerationPreloader';
 import Header from './Header';
+import ChatHistorySidebar from './ChatHistorySidebar';
+
+
+
 
 // Helper function to get WebSocket state name
 const getWebSocketStateName = (state) => {
@@ -23,6 +27,7 @@ const getCookie = (name) => {
 };
 
 const GenerationPage = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(true);
   const [messages, setMessages] = useState([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(() => {
@@ -43,11 +48,146 @@ const GenerationPage = () => {
   const { sessionId: urlSessionId } = useParams();
   const [sessionId, setSessionId] = useState(urlSessionId || null);
   const [sessionPath, setSessionPath] = useState(null);
+  const [attachedFiles, setAttachedFiles] = useState([]);
   const [videoModal, setVideoModal] = useState(null);
+  const [searchParams] = useSearchParams();
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // 'success', 'error', or null
+  const [errorMessage, setErrorMessage] = useState(null); // HeyGen error message
   
+  // Extract video hash from HeyGen URLs to deduplicate by video, not URL
+  const extractVideoHash = useCallback((url) => {
+    if (!url) return null;
+    // Extract the video hash from HeyGen URLs
+    // Matches patterns like: /caption_HASH.mp4 or /transcode/HASH/
+    const captionMatch = url.match(/caption_([a-f0-9]{32})/);
+    if (captionMatch) return captionMatch[1];
+    
+    const transcodeMatch = url.match(/transcode\/([a-f0-9]{32})\//);
+    if (transcodeMatch) return transcodeMatch[1];
+    
+    return null;
+  }, []);
+
+  // Function to load chat from history
+  const loadChatFromHistory = useCallback(async (chatId) => {
+    console.log('📂 Loading chat from history:', chatId);
+    setIsLoading(true);
+    
+    try {
+      const baseUrl = window.location.origin;
+      const response = await fetch(`${baseUrl}/proxy/api/chats/${chatId}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to load chat');
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.chat && data.chat.messages) {
+        console.log(`✅ Loaded ${data.chat.messages.length} messages from history`);
+        
+        // Process messages same way as WebSocket get_messages
+        const sanitizedMessages = data.chat.messages.map(msg => {
+          let processedMsg = msg;
+          if (msg.role === 'agent' && msg.text) {
+            let text = msg.text;
+            text = text.replace(/heygen/gi, 'ArenaGen');
+            processedMsg = { ...msg, text };
+          }
+          return processedMsg;
+        });
+        
+        // Set messages and update refs
+        setMessages(sanitizedMessages);
+        previousMessagesRef.current = sanitizedMessages;
+        
+        // Reset chat history sent flag when loading a new chat
+        chatHistorySentRef.current = false;
+        console.log('🔄 Reset chatHistorySentRef for new chat history load');
+        
+        // Seed video URLs and hashes
+        for (const m of sanitizedMessages) {
+          if (m && m.video && m.video.videoUrl) {
+            assignedUrlsRef.current.add(m.video.videoUrl);
+            const hash = extractVideoHash(m.video.videoUrl);
+            if (hash) videoHashesRef.current.add(hash);
+          }
+        }
+        
+        // Cache in sessionStorage
+        if (chatId) {
+          sessionStorage.setItem(`messages:${chatId}`, JSON.stringify(sanitizedMessages));
+        }
+        
+        // Extract sessionId from chatId if needed
+        const sessionIdFromChat = data.chat.sessionId || chatId.replace('chat_', '');
+        setSessionId(sessionIdFromChat);
+        setSessionPath(`/agent/${sessionIdFromChat}`);
+        
+        // Navigate the Playwright browser to this session
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          console.log('🌐 Navigating Playwright to historical session:', sessionIdFromChat);
+          wsRef.current.send(JSON.stringify({
+            action: 'navigate',
+            url: `/agent/${sessionIdFromChat}` 
+          }));
+          // Ensure video URL polling is active when viewing a previous chat
+          try {
+            startGetVideoUrlPolling();
+          } catch (e) {
+            console.warn('⚠️ Unable to start get_video_url polling:', e);
+          }
+          // Ensure progress polling is active when viewing a previous chat
+          try {
+            startProgressPolling();
+          } catch (e) {
+            console.warn('⚠️ Unable to start progress polling:', e);
+          }
+        }
+        
+        setIsLoading(false);
+        isLoadingRef.current = false;
+      } else {
+        throw new Error('Invalid chat data');
+      }
+    } catch (error) {
+      console.error('❌ Error loading chat from history:', error);
+      setMessages([{ 
+        role: 'agent', 
+        text: `Failed to load chat: ${error.message}` 
+      }]);
+      setIsLoading(false);
+      isLoadingRef.current = false;
+    }
+  }, [extractVideoHash]);
+
   // Handle URL parameter changes
   useEffect(() => {
-    if (urlSessionId && urlSessionId !== sessionId) {
+    const loadFromHistory = searchParams.get('loadFromHistory');
+    
+    if (loadFromHistory === 'true' && urlSessionId) {
+      console.log('🔍 Detected history load request for chat:', urlSessionId);
+      
+      // Set flag to prevent auto-save while loading from history
+      isLoadingFromHistoryRef.current = true;
+      
+      // Navigation to /home is now handled in ws.onopen
+      // Just load the chat history from the API
+      loadChatFromHistory(urlSessionId).then(() => {
+        // Clear flag after loading completes
+        isLoadingFromHistoryRef.current = false;
+        console.log('✅ History load complete, auto-save re-enabled');
+        
+        // After loading chat history, start polling
+        console.log('🔄 Starting polling for chat history updates');
+        startPolling();
+        startVideoUrlPolling();
+        startGetVideoUrlPolling();
+      });
+    } else if (urlSessionId && urlSessionId !== sessionId) {
       setSessionId(urlSessionId);
       
       // If WebSocket is connected, navigate to the new session
@@ -59,25 +199,42 @@ const GenerationPage = () => {
         }));
       }
     }
-  }, [urlSessionId, sessionId]);
+  }, [urlSessionId, sessionId, searchParams, loadChatFromHistory]);
   const [generationProgress, setGenerationProgress] = useState(null);
   const [isGeneratingLocal, setIsGeneratingLocal] = useState(false);
-  const [attachedFiles, setAttachedFiles] = useState([]);
   const [newAgentMessageAdded, setNewAgentMessageAdded] = useState(false);
   const messagesEndRef = useRef(null);
   const wsRef = useRef(null);
+  const processedMessageIds = useRef(new Set());
   const pollIntervalRef = useRef(null);
   const progressPollIntervalRef = useRef(null);
   const videoUrlPollIntervalRef = useRef(null);
   const getVideoUrlPollIntervalRef = useRef(null);
   const makeChangesPollIntervalRef = useRef(null);
   const continueUnlimitedPollIntervalRef = useRef(null);
+  
+  // Track last actually-sent prompt (could be composed with history)
+  const lastSentPromptRef = useRef(null);
+  const lastSentUserMessageRef = useRef(null); // Track the exact user message text to prevent duplication
+  
+  // Debounced auto-save
+  const saveDebounceRef = useRef(null);
+  const lastSavedFingerprintRef = useRef(null);
   const previousMessagesRef = useRef([]);
+  const isLoadingFromHistoryRef = useRef(false);
   const videoUrlsRef = useRef(new Map()); // Track video URLs by message ID
   const assignedUrlsRef = useRef(new Set()); // Track URLs already assigned to any message
   const videoHashesRef = useRef(new Set()); // Track video hashes to prevent duplicate videos
   const fileInputRef = useRef(null);
   const initialLoadCompleteRef = useRef(false); // Track if initial load is done
+  const loadingTimeoutRef = useRef(null); // Track loading timeout to clear it on response
+  const isLoadingRef = useRef(false); // Track loading state in closures
+  const chatHistorySentRef = useRef(false); // Track if chat history context has been sent
+  
+  // Track the exact composed history+prompt message (normalized) to hide when echoed back
+  const lastHistoryCompositeRef = useRef(null);
+  // Track the last plain user prompt so the UI always shows it
+  const lastUserPromptRef = useRef(null);
 
   // Manual extraction trigger function (stable reference)
   const extractVideoUrls = useCallback(() => {
@@ -96,20 +253,6 @@ const GenerationPage = () => {
       delete window.extractVideoUrls;
     };
   }, [extractVideoUrls]);
-
-  // Extract video hash from HeyGen URLs to deduplicate by video, not URL
-  const extractVideoHash = (url) => {
-    if (!url) return null;
-    // Extract the video hash from HeyGen URLs
-    // Matches patterns like: /caption_HASH.mp4 or /transcode/HASH/
-    const captionMatch = url.match(/caption_([a-f0-9]{32})/);
-    if (captionMatch) return captionMatch[1];
-    
-    const transcodeMatch = url.match(/transcode\/([a-f0-9]{32})\//);
-    if (transcodeMatch) return transcodeMatch[1];
-    
-    return null;
-  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -160,7 +303,7 @@ const GenerationPage = () => {
       console.log('  - debugDom() - Show DOM structure');
       console.log('  - getMessages() - Fetch messages');
       
-      // Start progress polling immediately and keep it running
+      // Always start continuous pollers on connect (idempotent; start* clears existing intervals)
       console.log('🔄 Starting continuous progress polling');
       startProgressPolling();
       
@@ -179,55 +322,75 @@ const GenerationPage = () => {
       // Determine which session to load
       const savedSession = sessionStorage.getItem('currentSession');
       const targetSessionId = urlSessionId; // From URL params
+      const loadFromHistory = searchParams.get('loadFromHistory') === 'true';
       
       if (targetSessionId) {
-        // Direct URL navigation (e.g., /generate/2c6149a9-9ee4-41c8-9df5-f3d7be5bea2e)
-        console.log('🎯 Direct URL navigation detected, sessionId:', targetSessionId);
-        const sessionPath = `/agent/${targetSessionId}`;
-        
-        setSessionPath(sessionPath);
-        setSessionId(targetSessionId);
-        
-        // Try to restore cached messages for this session if present
-        const cached = sessionStorage.getItem(`messages:${targetSessionId}`);
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              console.log('📦 Restored', parsed.length, 'cached messages');
-              setMessages(parsed);
-              previousMessagesRef.current = parsed;
-              // Seed assigned URL set from cached messages
-              for (const m of parsed) {
-                if (m && m.video && m.video.videoUrl) {
-                  assignedUrlsRef.current.add(m.video.videoUrl);
+        // Check if this is a history load
+        if (loadFromHistory) {
+          console.log('📚 History load detected, navigating browser to /home');
+          setSessionId(targetSessionId);
+          
+          // Navigate browser to /home for history loads
+          setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              console.log('🏠 Navigating browser to /home for history load');
+              ws.send(JSON.stringify({ 
+                action: 'navigate', 
+                url: '/home' 
+              }));
+            }
+          }, 500);
+        } else {
+          // Direct URL navigation (e.g., /generate/2c6149a9-9ee4-41c8-9df5-f3d7be5bea2e)
+          console.log('🎯 Direct URL navigation detected, sessionId:', targetSessionId);
+          const sessionPath = `/agent/${targetSessionId}`;
+          
+          setSessionPath(sessionPath);
+          setSessionId(targetSessionId);
+          
+          // Try to restore cached messages for this session if present
+          const cached = sessionStorage.getItem(`messages:${targetSessionId}`);
+          if (cached) {
+            try {
+              const parsed = JSON.parse(cached);
+              if (Array.isArray(parsed) && parsed.length > 0) {
+                console.log('📦 Restored', parsed.length, 'cached messages');
+                setMessages(parsed);
+                previousMessagesRef.current = parsed;
+                // Seed assigned URL set from cached messages
+                for (const m of parsed) {
+                  if (m && m.video && m.video.videoUrl) {
+                    assignedUrlsRef.current.add(m.video.videoUrl);
+                  }
                 }
               }
+            } catch (err) {
+              console.warn('Failed to parse cached messages:', err);
             }
-          } catch (err) {
-            console.warn('Failed to parse cached messages:', err);
           }
-        }
-        
-        // Wait for authentication to complete before initial load
-        setTimeout(() => {
-          if (ws.readyState === WebSocket.OPEN) {
-            // First navigate to the session
-            console.log('🌐 Navigating to session:', sessionPath);
-            ws.send(JSON.stringify({ 
-              action: 'navigate', 
-              url: sessionPath 
-            }));
-            
-            // Then trigger initial_load after a short delay
-            setTimeout(() => {
-              if (ws.readyState === WebSocket.OPEN && !initialLoadCompleteRef.current) {
-                console.log('🚀 Triggering initial_load for direct URL navigation');
-                ws.send(JSON.stringify({ action: 'initial_load' }));
+          
+          // Wait for authentication to complete before initial load
+          setTimeout(() => {
+            if (ws.readyState === WebSocket.OPEN) {
+              // First navigate to the session
+              console.log('🌐 Navigating to session:', sessionPath);
+              ws.send(JSON.stringify({ 
+                action: 'navigate', 
+                url: sessionPath 
+              }));
+              
+              // Only trigger initial_load if not loading a chat history
+              if (!urlSessionId) {
+                setTimeout(() => {
+                  if (ws.readyState === WebSocket.OPEN && !initialLoadCompleteRef.current) {
+                    console.log('🚀 Triggering initial_load for direct URL navigation');
+                    ws.send(JSON.stringify({ action: 'initial_load' }));
+                  }
+                }, 1000);
               }
-            }, 1000);
-          }
-        }, 500);
+            }
+          }, 500);
+        }
         
       } else if (savedSession) {
         // Restored session from sessionStorage (e.g., after creating new session)
@@ -277,8 +440,8 @@ const GenerationPage = () => {
                   // New session - just use normal polling
                   console.log('🆕 Recent session detected, starting normal polling');
                   setTimeout(() => startPolling(), 1000);
-                } else {
-                  // Older session - trigger initial_load
+                } else if (!urlSessionId) {
+                  // Older session - only trigger initial_load if not loading a chat history
                   setTimeout(() => {
                     if (ws.readyState === WebSocket.OPEN && !initialLoadCompleteRef.current) {
                       console.log('🚀 Triggering initial_load for saved session');
@@ -441,13 +604,15 @@ const GenerationPage = () => {
           // Mark initial load as complete
           initialLoadCompleteRef.current = true;
           
-          // Now start normal polling
-          console.log('🔄 Initial load complete, starting normal message polling');
-          startPolling();
-          startVideoUrlPolling();
-          startGetVideoUrlPolling();
-          
-          // Do not force-stop loading here; let subsequent handlers decide when to stop
+          // Only start polling if this is not a loaded chat history
+          if (!urlSessionId) {
+            console.log('🔄 Initial load complete, starting normal message polling');
+            startPolling();
+            startVideoUrlPolling();
+            startGetVideoUrlPolling();
+          } else {
+            console.log('⏩ Skipping initial polling for chat history load');
+          }
         } else {
           console.error('❌ Initial load failed:', data.error);
           // Fall back to normal polling
@@ -460,6 +625,15 @@ const GenerationPage = () => {
       
       // Handle get_messages response
       if (data.action === 'get_messages') {
+        // Check for HeyGen errors
+        if (data.hasError && data.error) {
+          console.log('⚠️ HeyGen error detected:', data.error);
+          setErrorMessage(data.error);
+          setIsLoading(false);
+          setIsGeneratingLocal(false);
+          isLoadingRef.current = false;
+        }
+        
         const messagesArray = Array.isArray(data.messages) 
           ? data.messages 
           : (data.messages && Array.isArray(data.messages.messages) 
@@ -497,43 +671,253 @@ const GenerationPage = () => {
         ).length;
 
         // Stop loading if we got a new agent text message
+        console.log('📊 Agent message count check:', {
+          current: currentAgentTextCount,
+          previous: previousAgentTextCount,
+          isLoading: isLoadingRef.current,
+          urlSessionId
+        });
+        
         if (currentAgentTextCount > previousAgentTextCount) {
           console.log('✅ New agent message detected, stopping preloader');
           setIsLoading(false);
+          isLoadingRef.current = false;
+          setIsGeneratingLocal(false);
+        } else if (isLoadingRef.current && currentAgentTextCount > 0) {
+          console.log('⚠️ We have agent messages but count didnt increase - forcing stop');
+          setIsLoading(false);
+          isLoadingRef.current = false;
           setIsGeneratingLocal(false);
         }
         
-        // Continue with your existing message processing code...
-        const sanitizedMessages = messagesArray.map(msg => {
-          let processedMsg = msg;
+        // Helper function for structured logging
+        const logMessage = (prefix, message, data = {}) => {
+          console.group(`📝 ${prefix}`);
+          console.log('Message:', message);
+          if (Object.keys(data).length > 0) {
+            console.log('Data:', data);
+          }
+          console.groupEnd();
+        };
+
+        // Helper function to generate a simple hash from string
+        const hashString = (str) => {
+          let hash = 0;
+          for (let i = 0; i < str.length; i++) {
+            const char = str.charCodeAt(i);
+            hash = ((hash << 5) - hash) + char;
+            hash = hash & hash; // Convert to 32bit integer
+          }
+          return Math.abs(hash).toString(16);
+        };
+
+        // Filter out synthetic history+prompt composite messages and preloader messages
+        const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const isComposite = (msg) => {
+          if (!msg || msg.role !== 'user' || !msg.text) return false;
+          const t = normalizeForCompare(msg.text);
+          
+          // Debug logging
+          if (t.includes('This is the context of our previous chat:')) {
+            console.log('🔍 Found composite message in initial_load:', t.substring(0, 100) + '...');
+            console.log('🔍 chatHistorySentRef:', chatHistorySentRef.current);
+            return true;
+          }
+          return false;
+        };
+        
+        const isPreloaderMessage = (msg) => {
+          if (!msg || msg.role !== 'agent') return false;
+          const text = normalizeForCompare(msg.text);
+          // Check for preloader text patterns
+          return text.includes('Our Video Agent is working on your video') ||
+                 text.includes('Video Agent is working on your video') ||
+                 (msg.video && !msg.video.videoUrl && text.includes('working on'));
+        };
+        
+        // Filter out composites and preloaders before processing
+        const filteredMessagesArray = messagesArray.filter(m => !isComposite(m) && !isPreloaderMessage(m));
+        console.log('📊 Filtered initial_load messages:', filteredMessagesArray.length, 'from', messagesArray.length);
+        
+        // If we have a plain prompt stored, add it if missing
+        if (lastUserPromptRef.current && filteredMessagesArray.every(m => m.role !== 'user')) {
+          console.log('➕ Adding plain user prompt to initial_load:', lastUserPromptRef.current);
+          filteredMessagesArray.push({ role: 'user', text: lastUserPromptRef.current });
+          // Clear after using once
+          lastUserPromptRef.current = null;
+        }
+        
+        // Process and sanitize messages
+        const sanitizedMessages = filteredMessagesArray.map((msg, index) => {
+          logMessage(`Processing message ${index}`, 'Starting message processing', {
+            role: msg.role,
+            hasText: !!msg.text,
+            hasVideo: !!msg.video
+          });
+          
+          let processedMsg = { ...msg };
           
           // Sanitize agent messages and replace HeyGen with ArenaGen
-          if (msg.role === 'agent' && msg.text) {
-            let text = msg.text;
-            text = text.replace(/heygen/gi, 'ArenaGen');
-            processedMsg = { ...msg, text: sanitizeMessage(text) };
+          if (processedMsg.role === 'agent' && processedMsg.text) {
+            const originalText = processedMsg.text;
+            processedMsg.text = sanitizeMessage(originalText.replace(/heygen/gi, 'ArenaGen'));
+            logMessage('Processed agent message', 'Text sanitized', {
+              originalLength: originalText.length,
+              sanitizedLength: processedMsg.text.length
+            });
+          }
+          
+          // Generate a content-based ID if missing
+          if (!processedMsg.id && processedMsg.text) {
+            const contentToHash = `${processedMsg.role}:${processedMsg.text}`;
+            processedMsg.id = `msg_${hashString(contentToHash)}`;
+            logMessage('Generated message ID', 'Created content-based ID', {
+              id: processedMsg.id,
+              contentStart: processedMsg.text.substring(0, 30)
+            });
           }
           
           // Restore video URL if we have one stored for this message
-          if (processedMsg.video && !processedMsg.video.videoUrl) {
-            const messageId = processedMsg.id || `${processedMsg.video.title || 'video'}_${processedMsg.timestamp || messagesArray.indexOf(msg)}`;
+          if (processedMsg.video) {
+            const messageId = processedMsg.id || `video_${Date.now()}_${index}`;
             const storedUrl = videoUrlsRef.current.get(messageId);
+            
             if (storedUrl) {
+              logMessage('Restoring video URL', 'Found stored video URL', {
+                messageId,
+                videoUrl: storedUrl.videoUrl ? 'present' : 'missing',
+                poster: storedUrl.poster ? 'present' : 'missing'
+              });
+              
               processedMsg = {
                 ...processedMsg,
                 video: {
                   ...processedMsg.video,
-                  videoUrl: storedUrl.videoUrl,
+                  videoUrl: storedUrl.videoUrl || processedMsg.video.videoUrl,
                   poster: storedUrl.poster || processedMsg.video.poster
                 }
               };
+            } else if (!processedMsg.video.videoUrl) {
+              logMessage('No stored URL', 'No video URL found in storage', { messageId });
             }
           }
           
           return processedMsg;
         });
+
+        // Log the final set of sanitized messages
+        console.group('✅ Sanitized Messages');
+        sanitizedMessages.forEach((msg, i) => {
+          console.log(`#${i} [${msg.role}]`, {
+            id: msg.id || 'no-id',
+            text: msg.text ? `${msg.text.substring(0, 50)}${msg.text.length > 50 ? '...' : ''}` : 'no-text',
+            hasVideo: !!msg.video,
+            videoUrl: msg.video?.videoUrl ? 'present' : 'none'
+          });
+        });
+        console.groupEnd();
         
-        // ... rest of your existing get_messages logic for merging and updating messages ...
+        // If we're in chat history mode, handle message updates carefully
+        if (urlSessionId) {
+          // Create a set of existing message contents for quick lookup
+          const existingContents = new Set(
+            previousMessagesRef.current
+              .filter(m => m.text) // Only text messages
+              .map(m => m.text.trim())
+          );
+          
+          const newMessages = sanitizedMessages.filter(msg => {
+            if (!msg.text) return false; // Skip empty messages
+            
+            // Skip the user message we just sent to prevent duplication
+            if (msg.role === 'user' && lastSentUserMessageRef.current && msg.text.trim() === lastSentUserMessageRef.current.trim()) {
+              console.log('⏭️  Skipping user message we just sent (lastSentUserMessageRef match):', msg.text.substring(0, 50));
+              return false;
+            }
+            
+            const isNew = !existingContents.has(msg.text.trim());
+            
+            // Debug logging for user messages
+            if (msg.role === 'user') {
+              console.log('🔍 Checking user message:', {
+                text: msg.text.substring(0, 50),
+                isNew,
+                inExistingContents: existingContents.has(msg.text.trim()),
+                existingContentsSize: existingContents.size,
+                lastSentUserMessage: lastSentUserMessageRef.current?.substring(0, 50)
+              });
+            }
+            
+            if (isNew) {
+              logMessage('New message detected', 'Content not in current state', {
+                preview: `${msg.text.substring(0, 50)}...`,
+                role: msg.role
+              });
+            }
+            return isNew;
+          });
+          
+          if (newMessages.length > 0) {
+            console.group('📥 Adding new messages to chat history');
+            newMessages.forEach((msg, i) => {
+              console.log(`#${i} [${msg.role}]`, {
+                id: msg.id,
+                textPreview: msg.text ? `${msg.text.substring(0, 100)}${msg.text.length > 100 ? '...' : ''}` : 'no-text',
+                hasVideo: !!msg.video,
+                videoUrl: msg.video?.videoUrl ? 'present' : 'none'
+              });
+            });
+            console.groupEnd();
+            
+            setMessages(prev => {
+              const updated = [...prev, ...newMessages];
+              console.log(`🔄 Message count: ${prev.length} → ${updated.length}`);
+              return updated;
+            });
+            
+            previousMessagesRef.current = [...previousMessagesRef.current, ...newMessages];
+            
+            // Stop loading when new agent message is received
+            const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
+            if (hasNewAgentMessage && isLoadingRef.current) {
+              console.log('✅ New agent message received, stopping preloader');
+              setIsLoading(false);
+              isLoadingRef.current = false;
+              setIsGeneratingLocal(false);
+              // Clear the sent user message tracker now that we have a response
+              lastSentUserMessageRef.current = null;
+            }
+          } else {
+            console.log('📭 No new messages to append to chat history', {
+              totalMessages: sanitizedMessages.length,
+              currentMessageCount: previousMessagesRef.current.length,
+              allMessagesHaveIds: sanitizedMessages.every(m => m.id)
+            });
+          }
+          return;
+        }
+        
+        // For non-chat history mode, use position-based tracking
+        // Content-based IDs change when text streams, so we track by position instead
+        const currentMessageCount = previousMessagesRef.current.length;
+        const newMessages = sanitizedMessages.slice(currentMessageCount);
+        
+        if (newMessages.length > 0) {
+          console.log(`📥 Appending ${newMessages.length} new messages (position ${currentMessageCount} onwards)`);
+          setMessages(prev => [...prev, ...newMessages]);
+          previousMessagesRef.current = [...previousMessagesRef.current, ...newMessages];
+          
+          // Stop loading when new agent message is received
+          const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
+          if (hasNewAgentMessage && isLoadingRef.current) {
+            console.log('✅ New agent message received in active chat, stopping preloader');
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            setIsGeneratingLocal(false);
+          }
+        }
+        
+        // For new chats, use the normal message merging logic
         const merged = [];
         for (let i = 0; i < sanitizedMessages.length; i++) {
           const m = sanitizedMessages[i];
@@ -661,7 +1045,38 @@ const GenerationPage = () => {
             }
           };
           
-          for (const m of finalMessages) upsertMessage(m);
+          // Hide synthetic history+prompt composite and ensure plain prompt is visible
+          const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
+          const isComposite = (msg) => {
+            if (!msg || msg.role !== 'user' || !msg.text) return false;
+            const t = normalizeForCompare(msg.text);
+            
+            // More aggressive check - any message containing the history context prefix
+            if (t.includes('This is the context of our previous chat:')) {
+              console.log('🔍 Found composite message in get_messages - hiding it');
+              return true;
+            }
+            
+            if (lastHistoryCompositeRef.current && t === lastHistoryCompositeRef.current) {
+              console.log('✅ Hiding composite (exact match)');
+              // One-time hide
+              lastHistoryCompositeRef.current = null;
+              return true;
+            }
+            return false;
+          };
+          let filteredIncoming = finalMessages.filter(m => !isComposite(m));
+          console.log('📊 Filtered messages:', filteredIncoming.length, 'from', finalMessages.length);
+          if (lastUserPromptRef.current) {
+            const expected = normalizeForCompare(lastUserPromptRef.current);
+            const hasPlain = filteredIncoming.some(m => m && m.role === 'user' && normalizeForCompare(m.text || '') === expected);
+            if (!hasPlain) {
+              filteredIncoming = [...filteredIncoming, { role: 'user', text: lastUserPromptRef.current }];
+            }
+            // Only enforce once to avoid duplicates
+            lastUserPromptRef.current = null;
+          }
+          for (const m of filteredIncoming) upsertMessage(m);
           
           const capped = result.slice(-200);
           previousMessagesRef.current = capped;
@@ -674,9 +1089,10 @@ const GenerationPage = () => {
         });
         
         // Stop loading if a new agent message was added
-        if (newAgentMessageAdded && isLoading) {
+        if (newAgentMessageAdded && isLoadingRef.current) {
           console.log('🎉 New agent message detected, stopping preloader');
           setIsLoading(false);
+          isLoadingRef.current = false;
         }
         
         return;
@@ -689,6 +1105,31 @@ const GenerationPage = () => {
           setGenerationProgress(data.data);
           console.log('🎥 Video generation detected with', data.data.percentage + '%');
           setIsGeneratingLocal(true);
+          // Ensure there is a pending video message so the progress card shows
+          setMessages(prev => {
+            // Check if there's already a PENDING video message (no URL yet)
+            const hasPendingVideoMsg = prev.some(m => m && m.video && !m.video.videoUrl);
+            console.log('🔍 Has pending video message:', hasPendingVideoMsg, 'Total messages:', prev.length);
+            if (hasPendingVideoMsg) {
+              console.log('✅ Pending video message already exists, keeping it');
+              return prev;
+            }
+            // Otherwise, create a placeholder agent message with a video object (no URL yet)
+            const placeholder = {
+              role: 'agent',
+              text: '',
+              video: {
+                thumbnail: '',
+                videoUrl: null,
+                poster: '',
+                title: 'Generating your video...'
+              }
+            };
+            console.log('➕ Adding placeholder video message for progress display');
+            const updated = [...prev, placeholder];
+            previousMessagesRef.current = updated;
+            return updated;
+          });
         } else {
           const wasGenerating = generationProgress && generationProgress.isGenerating;
           // Keep the progress data but mark as not generating
@@ -705,6 +1146,21 @@ const GenerationPage = () => {
             startGetVideoUrlPolling();
           }
         }
+        return;
+      }
+      
+      // Handle save_chat response
+      if (data.action === 'save_chat') {
+        if (data.success) {
+          console.log('✅ Chat saved successfully:', data.data);
+          setSaveStatus('success');
+          setTimeout(() => setSaveStatus(null), 3000);
+        } else {
+          console.error('❌ Failed to save chat:', data.error);
+          setSaveStatus('error');
+          setTimeout(() => setSaveStatus(null), 3000);
+        }
+        setIsSaving(false);
         return;
       }
       
@@ -767,7 +1223,48 @@ const GenerationPage = () => {
               
               console.log(`✅ Updated message ${matchIndex} with video URL`);
             } else {
-              console.log(`⚠️  No matching message found for video: ${videoData.title}`);
+              // No poster/pending match found. Try to merge into the last existing video message (pending or not).
+              let lastVideoIndex = -1;
+              for (let i = updated.length - 1; i >= 0; i--) {
+                const m = updated[i];
+                if (m && m.video) { lastVideoIndex = i; break; }
+              }
+              if (lastVideoIndex >= 0) {
+                const existing = updated[lastVideoIndex];
+                const messageId = existing.id || `${videoData.title}_${existing.timestamp || lastVideoIndex}`;
+                videoUrlsRef.current.set(messageId, {
+                  videoUrl: videoData.videoUrl,
+                  poster: videoData.poster
+                });
+                updated[lastVideoIndex] = {
+                  ...existing,
+                  video: {
+                    ...(existing.video || {}),
+                    videoUrl: videoData.videoUrl || (existing.video && existing.video.videoUrl) || null,
+                    poster: videoData.poster || (existing.video && existing.video.poster) || ''
+                  }
+                };
+                assignedUrlsRef.current.add(videoData.videoUrl);
+                const videoHash = extractVideoHash(videoData.videoUrl);
+                if (videoHash) videoHashesRef.current.add(videoHash);
+                console.log(`🔁 Merged extracted video into existing video message at index ${lastVideoIndex}`);
+              } else {
+                // As a last resort, create a single video message to host this URL
+                updated.push({
+                  role: 'agent',
+                  text: '',
+                  video: {
+                    thumbnail: videoData.poster || '',
+                    videoUrl: videoData.videoUrl,
+                    poster: videoData.poster || '',
+                    title: videoData.title || 'Your video is ready!'
+                  }
+                });
+                assignedUrlsRef.current.add(videoData.videoUrl);
+                const videoHash = extractVideoHash(videoData.videoUrl);
+                if (videoHash) videoHashesRef.current.add(videoHash);
+                console.log('➕ Created single fallback video message from extracted URLs');
+              }
             }
           });
           
@@ -841,20 +1338,8 @@ const GenerationPage = () => {
           //   }
           // }
 
-          // if (targetIndex < 0) {
-          //   // Fallback: create a new video message
-          //   updated.push({
-          //     role: 'agent',
-          //     text: '',
-          //     video: {
-          //       thumbnail: poster || '',
-          //       videoUrl: newUrl,
-          //       poster: poster || '',
-          //       title
-          //     }
-          //   });
-          // } else {
-            // Update the pending card with the URL
+          // Update the pending card if found; otherwise merge into last existing video message; as last resort, create one
+          if (targetIndex >= 0) {
             const existing = updated[targetIndex];
             if (existing && existing.video) {
               updated[targetIndex] = {
@@ -867,6 +1352,38 @@ const GenerationPage = () => {
                 }
               };
             }
+          } else {
+            // Try to merge into last existing video message (pending or not)
+            let lastVideoIndex = -1;
+            for (let i = updated.length - 1; i >= 0; i--) {
+              const m = updated[i];
+              if (m && m.video) { lastVideoIndex = i; break; }
+            }
+            if (lastVideoIndex >= 0) {
+              const existing = updated[lastVideoIndex];
+              updated[lastVideoIndex] = {
+                ...existing,
+                video: {
+                  ...(existing.video || {}),
+                  videoUrl: newUrl || (existing.video && existing.video.videoUrl) || null,
+                  poster: poster || (existing.video && existing.video.poster) || '',
+                  title: title || (existing.video && existing.video.title) || 'Your video is ready!'
+                }
+              };
+            } else {
+              // Create a single fallback video message
+              updated.push({
+                role: 'agent',
+                text: '',
+                video: {
+                  thumbnail: poster || '',
+                  videoUrl: newUrl,
+                  poster: poster || '',
+                  title
+                }
+              });
+            }
+          }
 
           // Track URL/hash to prevent duplicates and persist
           assignedUrlsRef.current.add(newUrl);
@@ -882,6 +1399,7 @@ const GenerationPage = () => {
           return updated;
         });
         setIsLoading(false);
+        isLoadingRef.current = false;
         setIsGeneratingLocal(false);
         return;
       }
@@ -905,28 +1423,25 @@ const GenerationPage = () => {
       console.log('Disconnected from Playwright proxy');
     };
 
- return () => {
-    ws.close();
-    stopPolling();
-    stopProgressPolling();
-    stopVideoUrlPolling();
-    stopGetVideoUrlPolling();
-    stopMakeChangesPolling();
-    delete window.debugDom;
-    delete window.getMessages;
-  };
-}, [urlSessionId]); // 
+    // Cleanup on unmount
+    return () => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.close();
+      }
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    };
+  }, [urlSessionId]);
 
-  // HTTP fallback: explicitly ask backend to navigate to this session
-  useEffect(() => {
-    const currentSessionId = sessionId || urlSessionId;
-    if (!currentSessionId) return;
-    const baseUrl = window.location.origin;
-    fetch(`${baseUrl}/proxy/generate/${currentSessionId}`, {
-      method: 'GET',
-      credentials: 'include'
-    }).catch(err => console.warn('HTTP navigate fallback failed:', err?.message || err));
-  }, [sessionId, urlSessionId]);
+  // Disabled initial load for now
+  // useEffect(() => {
+  //   const currentSessionId = sessionId || urlSessionId;
+  //   if (!currentSessionId) return;
+  //   const baseUrl = window.location.origin;
+  //   fetch(`${baseUrl}/generate/${currentSessionId}`, {
+  //     method: 'GET',
+  //     credentials: 'include'
+  //   }).catch(err => console.warn('HTTP navigate fallback failed:', err?.message || err));
+  // }, [sessionId, urlSessionId]);
 
   const startPolling = () => {
     stopPolling(); // Clear any existing interval
@@ -1105,17 +1620,85 @@ const GenerationPage = () => {
     
     // Reset all loading states
     setIsLoading(true);
+    isLoadingRef.current = true;
     setIsGeneratingLocal(false);
     setGenerationProgress(null);
     
-    // Clear any previous agent messages to ensure we're starting fresh
-    setMessages(prev => {
-      const newMessages = prev.filter(msg => msg.role !== 'agent' || !msg.text.includes('Thinking...'));
-      return [...newMessages, { role: 'user', text: userMessage }];
-    });
+    // Safety timeout: if no response after 30 seconds, clear loading state
+    if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = setTimeout(() => {
+      console.warn('Loading timeout - clearing preloader after 30 seconds');
+      setIsLoading(false);
+      isLoadingRef.current = false;
+      setIsGeneratingLocal(false);
+    }, 30000);
+    
+    // If we're in chat history mode, we need to exit it when submitting a new prompt
+    // This will create a new session instead of continuing the old one
+    if (urlSessionId) {
+      console.log('📤 Exiting chat history mode to create new session');
+      // Don't clear urlSessionId here - let the backend create a new session
+      // The new session will have a different ID
+    }
+    
+    // Get the current messages before updating state
+    const currentMessages = [...messages];
+    const filteredMessages = currentMessages.filter(msg => msg.role !== 'agent' || !msg.text.includes('Thinking...'));
+    
+    // Update UI with user message (only once)
+    const userMessageWithId = { 
+      role: 'user', 
+      text: userMessage,
+      id: `user_${Date.now()}` // Add unique ID to track this message
+    };
+    const updatedMessages = [...filteredMessages, userMessageWithId];
+    setMessages(updatedMessages);
     
     // Update previous messages ref
-    previousMessagesRef.current = [...previousMessagesRef.current, { role: 'user', text: userMessage }];
+    previousMessagesRef.current = updatedMessages;
+    
+    // Track this message ID to prevent duplication when get_messages returns it
+    processedMessageIds.current.add(userMessageWithId.id);
+    // Also track the exact text to prevent duplication when backend returns it
+    lastSentUserMessageRef.current = userMessage;
+    console.log('📤 Sent user message:', {
+      id: userMessageWithId.id,
+      text: userMessage.substring(0, 50),
+      totalMessages: updatedMessages.length,
+      previousMessagesCount: previousMessagesRef.current.length
+    });
+    
+    // Prepare the message to send - include chat history ONLY if this is the first message from a loaded chat history
+    let messageToSend = userMessage;
+    const loadFromHistory = searchParams.get('loadFromHistory');
+    if (loadFromHistory === 'true' && currentMessages.length > 0 && !chatHistorySentRef.current) {
+      const chatHistory = currentMessages
+        .filter(msg => msg.role && msg.text) // Only include valid messages
+        .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
+        .join('\n');
+      
+      messageToSend = `This is the context of our previous chat:\n${chatHistory}\n\nThis is my current prompt:\n${userMessage}`;
+      
+      console.log('📝 Sending FIRST message with chat history context');
+      
+      // Track normalized composite to hide in UI if echoed back
+      const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
+      lastHistoryCompositeRef.current = normalizeForCompare(messageToSend);
+      // Track the plain user prompt for UI
+      lastUserPromptRef.current = userMessage;
+      
+      // Mark that we've sent the chat history context
+      chatHistorySentRef.current = true;
+      
+      // IMMEDIATELY remove the loadFromHistory parameter so subsequent messages don't include history
+      window.history.replaceState({}, '', `/generate/${urlSessionId}`);
+    } else if (chatHistorySentRef.current) {
+      console.log('✅ Chat history already sent, sending normal message');
+      // Keep the latest plain prompt for UI
+      lastUserPromptRef.current = userMessage;
+      // Ensure we don't hide unrelated messages later
+      lastHistoryCompositeRef.current = null;
+    }
 
     // // Add user message immediately
     // setMessages(prev => {
@@ -1155,9 +1738,12 @@ const GenerationPage = () => {
         console.log('Sending message to existing session', window.location.pathname);
         wsRef.current.send(JSON.stringify({ 
           action: 'send_message', 
-          message: userMessage,
+          message: messageToSend,
           currentPath: window.location.pathname
         }));
+        // Ensure progress and video URL polling are active right after submit
+        try { startProgressPolling(); } catch (_) {}
+        try { startGetVideoUrlPolling(); } catch (_) {}
       } else {
         // No session yet, upload files first if any
         if (attachedFiles.length > 0) {
@@ -1182,6 +1768,7 @@ const GenerationPage = () => {
               text: `File upload failed: ${uploadData.error}` 
             }]);
             setIsLoading(false);
+            isLoadingRef.current = false;
             return;
           }
           console.log('✅ Files uploaded successfully');
@@ -1208,9 +1795,32 @@ const GenerationPage = () => {
         if (data.success) {
           console.log('Prompt submitted successfully');
           
+          // Clear loading timeout since we got a response
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          
           // Save session info
           if (data.sessionPath) {
             setSessionPath(data.sessionPath);
+            
+            // Extract new session ID from path (e.g., /agent/abc123 -> abc123)
+            const newSessionId = data.sessionPath.split('/').pop();
+            if (newSessionId && newSessionId !== urlSessionId) {
+              console.log(`📤 Transitioning from chat history (${urlSessionId}) to new session (${newSessionId})`);
+              // Update URL to new session without loadFromHistory parameter
+              window.history.replaceState({}, '', `/generate/${newSessionId}`);
+              setSessionId(newSessionId);
+              
+              // Reset message tracking for new session
+              previousMessagesRef.current = [];
+              processedMessageIds.current.clear();
+              console.log('🔄 Reset message tracking for new session');
+            }
+            
             sessionStorage.setItem('currentSession', JSON.stringify({
               sessionPath: data.sessionPath,
               sessionUrl: data.sessionUrl,
@@ -1229,20 +1839,36 @@ const GenerationPage = () => {
           // Messages will be updated via WebSocket
         } else {
           console.error('Failed to submit prompt:', data.error);
+          
+          // Clear loading timeout on error
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
+          
           setMessages(prev => [...prev, { 
             role: 'agent', 
             text: `Error: ${data.error}` 
           }]);
           setIsLoading(false);
+          isLoadingRef.current = false;
         }
       }
     } catch (error) {
       console.error('Error submitting prompt:', error);
+      
+      // Clear loading timeout on error
+      if (loadingTimeoutRef.current) {
+        clearTimeout(loadingTimeoutRef.current);
+        loadingTimeoutRef.current = null;
+      }
+      
       setMessages(prev => [...prev, { 
         role: 'agent', 
         text: `Error: ${error.message}` 
       }]);
       setIsLoading(false);
+      isLoadingRef.current = false;
     }
   };
 
@@ -1265,8 +1891,165 @@ const GenerationPage = () => {
     setAttachedFiles(prev => prev.filter((_, i) => i !== index));
   };
 
+  // Compute a stable fingerprint of messages for change detection
+  const fingerprintMessages = useCallback((msgs) => {
+    try {
+      const minimal = (msgs || []).map(m => ({
+        role: m.role,
+        text: m.text || '',
+        video: m.video ? {
+          videoUrl: m.video.videoUrl || null,
+          poster: m.video.poster || m.video.thumbnail || null,
+          title: m.video.title || ''
+        } : null,
+        images: Array.isArray(m.images) ? m.images.length : 0
+      }));
+      return JSON.stringify(minimal);
+    } catch {
+      return String((msgs || []).length);
+    }
+  }, []);
+
+  // Auto-save whenever messages change (debounced)
+  useEffect(() => {
+    // Need a valid session and at least one message
+    if (!urlSessionId || messages.length === 0) {
+      console.log('💾 Auto-save skipped: no session or no messages', { urlSessionId, msgCount: messages.length });
+      return;
+    }
+    
+    // Skip auto-save while loading from history to prevent overwriting with empty messages
+    if (isLoadingFromHistoryRef.current) {
+      console.log('💾 Auto-save skipped: loading from history');
+      return;
+    }
+    
+    const fp = fingerprintMessages(messages);
+    if (fp === lastSavedFingerprintRef.current) {
+      return; // No change, skip
+    }
+    
+    if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    saveDebounceRef.current = setTimeout(() => {
+      // Check WebSocket inside the timeout (it may have connected by now)
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        console.log('💾 Auto-save skipped: WebSocket not ready', wsRef.current?.readyState);
+        return;
+      }
+      
+      try {
+        console.log('💾 Auto-saving chat for session:', urlSessionId, 'messages:', messages.length);
+        
+        // Filter out composite messages before saving
+        const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
+        const messagesToSave = messages.filter(msg => {
+          if (!msg || msg.role !== 'user' || !msg.text) return true;
+          const t = normalizeForCompare(msg.text);
+          // Skip composite messages that start with "This is the context of our previous chat:"
+          return !t.includes('This is the context of our previous chat:');
+        });
+        
+        console.log(`💾 Filtered ${messages.length - messagesToSave.length} composite messages before saving`);
+        lastSavedFingerprintRef.current = fp;
+        wsRef.current.send(JSON.stringify({
+          action: 'save_chat',
+          sessionId: urlSessionId,
+          messages: messagesToSave,
+          title: null,
+          composedPrompt: lastSentPromptRef.current || null
+        }));
+      } catch (e) {
+        console.error('Auto-save error:', e);
+      }
+    }, 800);
+    
+    return () => {
+      if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
+    };
+  }, [messages, urlSessionId, fingerprintMessages]);
+
+  // Function to save the current chat
+  const handleSaveChat = async () => {
+    if (!urlSessionId || isSaving) return;
+    
+    try {
+      setIsSaving(true);
+      setSaveStatus(null);
+      
+      // Filter out composite messages before saving
+      const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
+      const messagesToSave = messages.filter(msg => {
+        if (!msg || msg.role !== 'user' || !msg.text) return true;
+        const t = normalizeForCompare(msg.text);
+        // Skip composite messages that start with "This is the context of our previous chat:"
+        return !t.includes('This is the context of our previous chat:');
+      });
+      
+      console.log(`💾 Manual save: Filtered ${messages.length - messagesToSave.length} composite messages`);
+      
+      // Send save_chat request to backend
+      if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+        console.log('💾 Saving chat for session:', urlSessionId);
+        wsRef.current.send(JSON.stringify({
+          action: 'save_chat',
+          sessionId: urlSessionId,
+          messages: messagesToSave,
+          title: null // Let backend generate title from first user message
+        }));
+        
+        // Status will be set by the WebSocket response handler
+      } else {
+        console.error('WebSocket not connected');
+        setSaveStatus('error');
+        setTimeout(() => setSaveStatus(null), 3000);
+        setIsSaving(false);
+      }
+    } catch (error) {
+      console.error('Error saving chat:', error);
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus(null), 3000);
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Chat History Sidebar */}
+      <ChatHistorySidebar 
+        isOpen={sidebarOpen} 
+        onClose={() => setSidebarOpen(false)} 
+      />
+      
+      {/* Menu Button */}
+      <button
+        onClick={() => setSidebarOpen(true)}
+        className="fixed top-4 left-4 z-30 p-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200"
+        title="Chat History"
+      >
+        <svg
+          className="w-6 h-6 text-gray-700"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M4 6h16M4 12h16M4 18h16"
+          />
+        </svg>
+      </button>
+        
+        {/* Save Status Notification */}
+        {/* {saveStatus && (
+          <div 
+            className={`absolute top-12 right-0 mt-2 px-4 py-2 rounded-md shadow-md text-sm font-medium transition-opacity duration-300 ${saveStatus === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
+          >
+            {saveStatus === 'success' ? 'Chat saved successfully!' : 'Failed to save chat'}
+          </div>
+        )} */}
+      
       {/* Header with Logo */}
       <Header />
       
@@ -1322,10 +2105,18 @@ const GenerationPage = () => {
                   )} */}
                   {/* Unified Progress/Video Card - now inline with message */}
                   {message.video && (() => {
+                    console.log('🎬 Rendering video card/preloader:', {
+                      hasVideoUrl: !!message.video.videoUrl,
+                      isGeneratingLocal,
+                      progressIsGenerating: generationProgress?.isGenerating,
+                      percentage: generationProgress?.percentage
+                    });
+                    
                     // Show unified card if we have generation progress or a video message
                     if (isGeneratingLocal || generationProgress?.isGenerating || message.video) {
                       // If we have a video URL, show the video card
                       if (message.video.videoUrl) {
+                        console.log('✅ Rendering completed video card');
                         return (
                           <div className="mt-3">
                             <div
@@ -1368,6 +2159,7 @@ const GenerationPage = () => {
                       }
                       
                       // Otherwise show the progress indicator
+                      console.log('🎥 Rendering VideoGenerationPreloader with', generationProgress?.percentage + '%');
                       return (
                         <div className="mt-3">
                           <VideoGenerationPreloader
@@ -1379,6 +2171,7 @@ const GenerationPage = () => {
                       );
                     }
                     
+                    console.log('⚠️ Not rendering anything (conditions not met)');
                     return null;
                   })()}
 
@@ -1386,8 +2179,7 @@ const GenerationPage = () => {
               </div>
           ))}
 
-          {/* Standard preloader - KEEP THIS OUTSIDE, after the messages loop */}
-          {/* {isLoading && !messages.some(m => m.video) && ( */}
+          {/* Standard preloader - shows when loading but no video generation in progress */}
           {isLoading && !messages.some(m => m.video) && !isGeneratingLocal && !generationProgress?.isGenerating && (
             <div className="flex justify-start">
               <div className="bg-white text-gray-900 shadow-sm border border-gray-200 rounded-2xl rounded-bl-none px-5 py-3">
@@ -1397,6 +2189,17 @@ const GenerationPage = () => {
                   <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* Fallback preloader - if generation is in progress but no message with video exists */}
+          {(isGeneratingLocal || generationProgress?.isGenerating) && !messages.some(m => m.video) && (
+            <div className="flex justify-start">
+              <VideoGenerationPreloader
+                percentage={generationProgress?.percentage || 0}
+                message={generationProgress?.message || 'Our Video Agent is working on your video'}
+                currentStep={generationProgress?.currentStep || ''}
+              />
             </div>
           )}
 
@@ -1559,6 +2362,46 @@ const GenerationPage = () => {
                 </div>
               )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Error Popup */}
+      {errorMessage && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 w-full max-w-2xl px-4">
+          <div className="flex items-center gap-3 px-4 py-3 rounded-lg bg-red-50 border border-red-200 shadow-lg">
+            {/* Error Icon */}
+            <div className="flex-shrink-0">
+              <svg className="w-5 h-5 text-red-600" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+            </div>
+            
+            {/* Error Message */}
+            <div className="flex-1 text-sm font-medium text-gray-900">
+              {errorMessage}
+            </div>
+            
+            {/* Try Again Button */}
+            <button
+              onClick={() => {
+                setErrorMessage(null);
+                // Optionally trigger a retry here
+              }}
+              className="px-4 py-2 text-sm font-semibold text-gray-900 bg-white border border-gray-300 rounded-md hover:bg-gray-50 active:bg-gray-100 transition-colors"
+            >
+              Try again
+            </button>
+            
+            {/* Close Button */}
+            <button
+              onClick={() => setErrorMessage(null)}
+              className="flex-shrink-0 p-1 rounded-md hover:bg-red-100 active:bg-red-200 transition-colors"
+            >
+              <svg className="w-4 h-4 text-gray-900" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+              </svg>
+            </button>
           </div>
         </div>
       )}

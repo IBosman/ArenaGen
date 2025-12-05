@@ -1,0 +1,97 @@
+{
+  "id": "chat_1764852340808",
+  "title": "video",
+  "createdAt": "2025-12-04T12:45:40.809Z",
+  "updatedAt": "2025-12-04T13:42:07.228Z",
+  "messages": [
+    {
+      "role": "agent",
+      "text": "Hi! Got it—I've updated the plan to disable captions.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, featuring the uploaded female avatar introducing quick video creation features.\nAudience\tGeneral users new to AI video tools.\nMusic Theme\tUpbeat and modern tech-inspired.\nVideo Length\tRoughly 15 seconds (short-form demo).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, with the avatar speaking enthusiastically about creating videos via chat.\nTarget Language\tEnglish (United States).\nAvatar\tThe provided avatar \nSunny Smile\n (female).\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tAI illustrations of video creation interfaces and tech visuals.\nCaptions\tDisabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null
+    },
+    {
+      "role": "user",
+      "text": "enable the caption",
+      "id": "user_1764852770499"
+    },
+    {
+      "role": "agent",
+      "text": "Got it—I've updated the plan to enable captions and incorporated the exact avatar tag.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, featuring the uploaded female avatar introducing quick video creation features.\nAudience\tGeneral users new to AI video tools.\nMusic Theme\tUpbeat and modern tech-inspired.\nVideo Length\tRoughly 15 seconds (short-form demo).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the top",
+      "video": null,
+      "id": "msg_73670d59"
+    },
+    {
+      "role": "agent",
+      "text": "Got it—I've updated the plan to enable captions and incorporated the exact avatar tag.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, featuring the uploaded female avatar introducing quick video creation features.\nAudience\tGeneral users new to AI video tools.\nMusic Theme\tUpbeat and modern tech-inspired.\nVideo Length\tRoughly 15 seconds (short-form demo).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, with the avatar speaking enthusiastically about creating videos via chat.\nTarget Language\tEnglish (United States).\nAvatar\t\nSunny Smile\n (female).\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tAI illustrations of video creation interfaces and tech visuals.\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_23a3c519"
+    },
+    {
+      "role": "user",
+      "text": "make it landscape",
+      "id": "user_1764852869684"
+    },
+    {
+      "role": "agent",
+      "text": "No problem. I've updated the video orientation to landscape and included your newly uploaded avatar.",
+      "video": null,
+      "id": "msg_445ba331"
+    },
+    {
+      "role": "agent",
+      "text": "No problem. I've updated the video orientation to landscape and included your newly uploaded avatar.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, featuring the uploaded female avatar introducing quick video creation features.\nAudience\tGeneral users new to AI video tools.\nMusic Theme\tUpbeat and modern tech-inspired.\nVideo Length\tRoughly 15 seconds (short-form demo).\nVideo Orientation\tLandscape.\nScript Plan\tThe script will be automatically generated based on the topic, with the avatar speaking enthusiastically about creating videos via chat.\nTarget Language\tEnglish (United States).\nAvatar\tThe provided avatar \nSunny Smile\n.\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tAI illustrations of video creation interfaces and tech visuals.\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_1644eb61"
+    },
+    {
+      "role": "user",
+      "text": "set the length to 10 minutes",
+      "id": "user_1764852943302"
+    },
+    {
+      "role": "agent",
+      "text": "No problem—I've updated the video length to 5 minutes (our maximum allowed length) and incorporated your latest avatar upload.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabi",
+      "video": null,
+      "id": "msg_181266b3"
+    },
+    {
+      "role": "user",
+      "text": "set length to 10 seconds",
+      "id": "user_1764853059388"
+    },
+    {
+      "role": "agent",
+      "text": "Got it—I've updated the video length to 10 seconds and incorporated your new avatar upload.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, featuring the uploaded female avatar introducing quick video creation features.\nAudience\tGeneral users new to AI video tools.\nMusic Theme\tUpbeat and modern tech-inspired.\nVideo Length\tRoughly 10 seconds.\nVideo Orientation\tLandscape.\nScript Plan\tThe script will be automatically generated based on the topic, with the avatar speaking enthusiastically about creating videos via chat.\nTarget Language\tEnglish (United States).\nAvatar\tThe provided avatar \nSunny Smile\n (female).\nVoice\tThe voice of the provided avatar.\n**Supplemental Footage",
+      "video": null,
+      "id": "msg_23cce4ab"
+    },
+    {
+      "role": "agent",
+      "text": "Got it—I've updated the video length to 10 seconds and incorporated your new avatar upload.\n\nTopic\tA short demo showcasing ArenaGen's Video Agent capabilities, featuring the uploaded female avatar introducing quick video creation features.\nAudience\tGeneral users new to AI video tools.\nMusic Theme\tUpbeat and modern tech-inspired.\nVideo Length\tRoughly 10 seconds.\nVideo Orientation\tLandscape.\nScript Plan\tThe script will be automatically generated based on the topic, with the avatar speaking enthusiastically about creating videos via chat.\nTarget Language\tEnglish (United States).\nAvatar\tThe provided avatar \nSunny Smile\n (female).\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tAI illustrations of video creation interfaces and tech visuals.\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_5fb88818"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "id": "user_1764853137623"
+    },
+    {
+      "role": "agent",
+      "text": "",
+      "video": {
+        "thumbnail": "",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/a3e98225366441319809156c8ccd7fea/v19bded7305854ef690f6c27f1f1685d2/1920x1080.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27ArenaGen%2520Video%2520Demo.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/a3e98225366441319809156c8ccd7fea/v19bded7305854ef690f6c27f1f1685d2/1920x1080.jpeg",
+        "title": "video"
+      }
+    },
+    {
+      "role": "agent",
+      "text": "Great! I've successfully generated the video based on your plan. Let me know what you think, or if you'd like to create another video.",
+      "video": null,
+      "id": "msg_475ac5dd"
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

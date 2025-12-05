@@ -11,7 +11,7 @@ import { WebSocketServer } from 'ws';
 import fileUpload from 'express-fileupload';
 import axios from 'axios';
 import { createHash, createHmac } from 'crypto';
-import { saveChat, loadChat, listChats } from './utils/chatHistory.js';
+import * as chatStorage from './chat-storage.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -125,10 +125,11 @@ handleWebSocketMessage = async (ws, data, session = null) => {
         
         if (updated) {
           const chatId = session.page._chatId || `chat_${Date.now()}`;
-          console.log(`💾 [handleWebSocketMessage] Updating chat ${chatId} with video URL`);
+          const userEmail = ws.user?.email || 'anonymous';
+          console.log(`💾 [handleWebSocketMessage] Updating chat ${chatId} with video URL for user ${userEmail}`);
           
           try {
-            await saveChat(chatId, extractedMessages);
+            await chatStorage.updateChat(chatId, extractedMessages, userEmail);
             console.log(`✅ [handleWebSocketMessage] Successfully updated chat with video URL`);
             
             if (session?.page) {
@@ -145,34 +146,9 @@ handleWebSocketMessage = async (ws, data, session = null) => {
       }
     }
     
-    // Save after get_messages (initial capture of messages)
-    if (data.action === 'get_messages' && session?.page) {
-      const extractedMessages = session.page._extractedMessages;
-      
-      console.log('📬 [handleWebSocketMessage] Processing get_messages response', {
-        hasSession: !!session,
-        hasPage: !!session?.page,
-        hasExtractedMessages: !!extractedMessages,
-        messageCount: extractedMessages?.length || 0
-      });
-      
-      if (extractedMessages && Array.isArray(extractedMessages) && extractedMessages.length > 0) {
-        console.log(`✅ Found ${extractedMessages.length} messages to save`);
-        const chatId = session.page._chatId || `chat_${Date.now()}`;
-        console.log(`💾 [handleWebSocketMessage] Saving ${extractedMessages.length} messages to chat ${chatId}`);
-        
-        try {
-          await saveChat(chatId, extractedMessages);
-          console.log(`✅ [handleWebSocketMessage] Successfully saved chat ${chatId}`);
-          
-          if (session?.page) {
-            session.page._chatId = chatId;
-          }
-        } catch (error) {
-          console.error('❌ [handleWebSocketMessage] Error saving chat:', error.message);
-        }
-      }
-    }
+    // Note: We don't auto-save after get_messages anymore
+    // The frontend handles saving via explicit save_chat actions
+    // This prevents overwriting chat history when loading old chats
     
   } catch (error) {
     console.error('❌ [handleWebSocketMessage] Error in message handler:', error.message);
@@ -208,6 +184,30 @@ function verifyToken(token) {
   }
 }
 
+// Helper function to extract sessionKey from request cookies
+function getSessionKeyFromRequest(req) {
+  try {
+    const cookieHeader = req.headers.cookie || '';
+    const cookieMap = {};
+    cookieHeader.split(';').forEach(c => {
+      const [k, v] = c.split('=');
+      if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
+    });
+    const arenaToken = cookieMap['arena_token'];
+    if (arenaToken) {
+      const tokenData = verifyToken(arenaToken);
+      if (tokenData && tokenData.email) {
+        // Create unique session key using email:sessionId format
+        const sessionKey = tokenData.sessionId 
+          ? `${tokenData.email}:${tokenData.sessionId}`
+          : tokenData.email; // Fallback for old tokens without sessionId
+        return { sessionKey, email: tokenData.email, sessionId: tokenData.sessionId };
+      }
+    }
+  } catch (_) {}
+  return { sessionKey: 'anonymous', email: 'anonymous', sessionId: null };
+}
+
 const proxyRouter = express.Router();
 const app = express();
 let server = null; // For HTTP server instance
@@ -228,6 +228,8 @@ proxyRouter.use((req, res, next) => {
 // Convenience route: /generate/:sessionId will navigate to the same agent session
 proxyRouter.get('/generate/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
+  const loadFromHistory = req.query.loadFromHistory === 'true';
+  
   if (!sessionId) {
     return res.status(400).json({ success: false, error: 'sessionId is required' });
   }
@@ -235,51 +237,57 @@ proxyRouter.get('/generate/:sessionId', async (req, res) => {
     return res.status(503).json({ success: false, error: 'Browser not initialized' });
   }
   
-  // Extract user email from JWT token in cookie (HTTP endpoint)
-  let userEmail = 'anonymous';
-  try {
-    const cookieHeader = req.headers.cookie || '';
-    const cookieMap = {};
-    cookieHeader.split(';').forEach(c => {
-      const [k, v] = c.split('=');
-      if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
-    });
-    const arenaToken = cookieMap['arena_token'];
-    if (arenaToken) {
-      const tokenData = verifyToken(arenaToken);
-      if (tokenData && tokenData.email) {
-        userEmail = tokenData.email;
-      }
-    }
-  } catch (_) {}
+  // Extract sessionKey from JWT token in cookie (HTTP endpoint)
+  const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
   
   const relativeUrl = `/agent/${sessionId}`;
   const targetUrl = TARGET + relativeUrl;
-  console.log(`🌐 [HTTP] Navigating (via /generate) to agent session: ${targetUrl} for user: ${userEmail}`);
+  
+  if (loadFromHistory) {
+    console.log(`📚 [HTTP] Loading chat from history (no navigation): ${sessionId} for user: ${userEmail} (session: ${sessionKey})`);
+  } else {
+    console.log(`🌐 [HTTP] /generate endpoint called for session: ${sessionId} for user: ${userEmail}`);
+  }
+  
   try {
     // If user is authenticated and we have an anonymous session, migrate it
-    if (userEmail !== 'anonymous' && userSessions.has('anonymous')) {
+    if (sessionKey !== 'anonymous' && userSessions.has('anonymous') && !userSessions.has(sessionKey)) {
       const anonSession = userSessions.get('anonymous');
-      console.log(`🔄 Migrating anonymous session to: ${userEmail}`);
-      userSessions.set(userEmail, anonSession);
-      anonSession.userEmail = userEmail;
+      console.log(`🔄 Migrating anonymous session to: ${sessionKey}`);
+      userSessions.set(sessionKey, anonSession);
+      anonSession.userEmail = sessionKey;
       userSessions.delete('anonymous');
     }
     
-    // Check if session already exists (from WebSocket)
-    let session = userSessions.get(userEmail);
+    // Check if session already exists
+    let session = userSessions.get(sessionKey);
+    const sessionExists = !!session;
+    
     if (!session) {
       // Only create new session if one doesn't exist
-      session = await getUserSession(userEmail);
+      console.log(`🆕 Creating new session for user: ${userEmail} (session: ${sessionKey})`);
+      session = await getUserSession(sessionKey);
     } else {
-      console.log(`♻️  Reusing existing session for: ${userEmail}`);
+      console.log(`♻️  Session already exists for: ${sessionKey}`);
     }
+    
     const { page } = session;
     const current = page.url();
-    if (current !== targetUrl) {
-      await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 300000 });
+    
+    // CRITICAL FIX: Only navigate if session was just created OR if on wrong page
+    // Don't navigate if session already existed (likely from /submit-prompt)
+    if (!sessionExists && !loadFromHistory) {
+      // New session - navigate to the target URL
+      if (current !== targetUrl) {
+        console.log(`🌐 Navigating new session to: ${targetUrl}`);
+        await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 300000 });
+      } else {
+        console.log('➡️  Already on target session URL');
+      }
+    } else if (sessionExists) {
+      console.log(`✅ Session exists, skipping navigation (current: ${current})`);
     } else {
-      console.log('➡️  Already on target session URL');
+      console.log(`📝 Loading from history, no navigation needed (current: ${current})`);
     }
     // Optionally extract messages as in /agent handler
     let messages = null;
@@ -508,11 +516,11 @@ function setupWebSocketHandler() {
     console.log('🔌 Client connected via WebSocket');
     
     // Initialize user info
-    ws.user = { email: 'anonymous' };
+    ws.user = { email: 'anonymous', sessionKey: 'anonymous' };
     ws.sessionId = null;
     ws.isAlive = true;
     
-    // Extract user email from arena_token cookie
+    // Extract user email and sessionId from arena_token cookie
     const cookies = {};
     if (req.headers.cookie) {
       req.headers.cookie.split(';').forEach(cookie => {
@@ -527,8 +535,17 @@ function setupWebSocketHandler() {
     if (arenaToken) {
       const tokenData = verifyToken(arenaToken);
       if (tokenData && tokenData.email) {
-        ws.user = { email: tokenData.email };
+        // Create unique session key using email:sessionId format
+        const sessionKey = tokenData.sessionId 
+          ? `${tokenData.email}:${tokenData.sessionId}`
+          : tokenData.email; // Fallback for old tokens without sessionId
+        ws.user = { 
+          email: tokenData.email, 
+          sessionKey: sessionKey,
+          sessionId: tokenData.sessionId || null
+        };
         console.log('👤 User authenticated via token:', tokenData.email);
+        console.log('🔑 Session key:', sessionKey);
       }
     }
     
@@ -549,9 +566,9 @@ function setupWebSocketHandler() {
         console.log(`📨 [${ws.user?.email || 'anonymous'}] Processing:`, data.action);
         
         // Ensure we have a valid session for authenticated users
-        if (ws.user?.email && !session) {
-          userSession = await getUserSession(ws.user.email);
-          console.log(`🔄 Created new session for: ${ws.user.email}`);
+        if (ws.user?.sessionKey && ws.user.sessionKey !== 'anonymous' && !session) {
+          userSession = await getUserSession(ws.user.sessionKey);
+          console.log(`🔄 Created new session for: ${ws.user.sessionKey}`);
         }
         
         // Pass the WebSocket, data, and session to the handler
@@ -579,29 +596,90 @@ function setupWebSocketHandler() {
         const data = JSON.parse(message.toString());
         
         // For authenticated users, ensure we have a session
-        if (ws.user?.email) {
+        if (ws.user?.sessionKey && ws.user.sessionKey !== 'anonymous') {
           // If we don't have a session yet, try to get or create one
           if (!userSession) {
             // Check if session already exists (from HTTP endpoint)
-            const existingSession = userSessions.get(ws.user.email);
-            if (existingSession) {
-              userSession = existingSession;
-              console.log(`🔄 Reusing existing session from HTTP endpoint for: ${ws.user.email}`);
-              // Add to queue with the existing session
+            console.log(`🔍 Checking for existing session for: ${ws.user.sessionKey}`);
+            console.log(`   Available sessions:`, Array.from(userSessions.keys()));
+            
+            // CRITICAL: Check if we need to migrate anonymous session to authenticated user
+            if (ws.user.sessionKey !== 'anonymous' && userSessions.has('anonymous') && !userSessions.has(ws.user.sessionKey)) {
+              const anonSession = userSessions.get('anonymous');
+              console.log(`🔄 Migrating anonymous session to authenticated user: ${ws.user.sessionKey}`);
+              console.log(`   Anonymous session HeyGen ID: ${anonSession.heygenSessionId || 'none'}`);
+              userSessions.set(ws.user.sessionKey, anonSession);
+              anonSession.userEmail = ws.user.sessionKey;
+              userSessions.delete('anonymous');
+              userSession = anonSession;
+              console.log(`✅ Migration complete. Available sessions:`, Array.from(userSessions.keys()));
+              // Add to queue with the migrated session
               messageQueue.push({ message, session: userSession });
               if (!isProcessing) processQueue();
               return;
             }
             
+            const existingSession = userSessions.get(ws.user.sessionKey);
+            if (existingSession) {
+              userSession = existingSession;
+              console.log(`🔄 Reusing existing session from HTTP endpoint for: ${ws.user.sessionKey}`);
+              console.log(`   Current HeyGen session: ${existingSession.heygenSessionId || 'none'}`);
+              // Add to queue with the existing session
+              messageQueue.push({ message, session: userSession });
+              if (!isProcessing) processQueue();
+              return;
+            } else {
+              console.log(`❌ No existing session found for: ${ws.user.sessionKey}`);
+            }
+            
+            // No existing session - check if we really need to create one
+            // Parse the message to see if it's a navigation request
+            try {
+              const parsedData = JSON.parse(message.toString());
+              if (parsedData.action === 'navigate' && parsedData.url) {
+                console.log(`⚠️  WebSocket wants to navigate but no session exists yet for: ${ws.user.sessionKey}`);
+                console.log(`   This might be a race condition - session may be created by HTTP endpoint`);
+                // Wait a bit and check again
+                setTimeout(() => {
+                  const retrySession = userSessions.get(ws.user.sessionKey);
+                  if (retrySession) {
+                    console.log(`✅ Found session after retry for: ${ws.user.sessionKey}`);
+                    messageQueue.push({ message, session: retrySession });
+                    if (!isProcessing) processQueue();
+                  } else {
+                    console.log(`⚠️  Still no session after retry, creating new one`);
+                    getUserSession(ws.user.sessionKey).then(session => {
+                      userSession = session;
+                      console.log(`🔄 Created new session for: ${ws.user.sessionKey}`);
+                      messageQueue.push({ message, session: userSession });
+                      if (!isProcessing) processQueue();
+                    }).catch(error => {
+                      console.error(`❌ Failed to create session for ${ws.user.sessionKey}:`, error);
+                      if (ws.readyState === ws.OPEN) {
+                        ws.send(JSON.stringify({
+                          success: false,
+                          action: 'error',
+                          error: 'Failed to create browser session'
+                        }));
+                      }
+                    });
+                  }
+                }, 1000);
+                return;
+              }
+            } catch (e) {
+              // Not JSON or parsing failed, proceed with normal flow
+            }
+            
             // No existing session, create a new one
-            getUserSession(ws.user.email).then(session => {
+            getUserSession(ws.user.sessionKey).then(session => {
               userSession = session;
-              console.log(`🔄 Created new session for: ${ws.user.email}`);
+              console.log(`🔄 Created new session for: ${ws.user.sessionKey}`);
               // Add to queue with the new session
               messageQueue.push({ message, session: userSession });
               if (!isProcessing) processQueue();
             }).catch(error => {
-              console.error(`❌ Failed to create session for ${ws.user.email}:`, error);
+              console.error(`❌ Failed to create session for ${ws.user.sessionKey}:`, error);
               if (ws.readyState === ws.OPEN) {
                 ws.send(JSON.stringify({
                   success: false,
@@ -668,21 +746,22 @@ function setupWebSocketHandler() {
 }
 
 let browser = null;
-// Per-user browser contexts: Map<userEmail, {context, page, userEmail, lastActivity}>
+// Per-user browser contexts: Map<sessionKey, {context, page, userEmail, lastActivity}>
+// sessionKey format: "email:sessionId" for authenticated users, "anonymous" for unauthenticated
 const userSessions = new Map();
 // Track sessions being created to prevent race conditions
 const pendingSessions = new Map();
 
 // Helper function to load user cookies (for now, uses shared cookies)
-async function loadUserCookies(userEmail) {
+async function loadUserCookies(sessionKey) {
   let cookies = [];
   if (fs.existsSync(COOKIES_FILE)) {
     try {
       const cookieData = JSON.parse(fs.readFileSync(COOKIES_FILE, 'utf8'));
       cookies = Array.isArray(cookieData) ? cookieData : (cookieData.cookies || []);
-      console.log(`✅ Loaded cookies for user: ${userEmail}`);
+      console.log(`✅ Loaded cookies for session: ${sessionKey}`);
     } catch (err) {
-      console.warn(`⚠️  Could not parse cookies for ${userEmail}:`, err.message);
+      console.warn(`⚠️  Could not parse cookies for ${sessionKey}:`, err.message);
     }
   }
   return cookies;
@@ -700,27 +779,31 @@ const BROWSER_CONTEXT_OPTIONS = {
 };
 
 // Get or create user session with isolated context
-async function getUserSession(userEmail) {
-  if (!userEmail) {
-    userEmail = 'anonymous';
+// sessionKey format: "email:sessionId" for authenticated users, "anonymous" for unauthenticated
+async function getUserSession(sessionKey) {
+  if (!sessionKey) {
+    sessionKey = 'anonymous';
   }
 
   // Return existing session if available
-  if (userSessions.has(userEmail)) {
-    const session = userSessions.get(userEmail);
+  if (userSessions.has(sessionKey)) {
+    const session = userSessions.get(sessionKey);
     session.lastActivity = Date.now();
-    console.log(`♻️  Reusing existing session for: ${userEmail}`);
+    console.log(`♻️  Reusing existing session for: ${sessionKey}`);
+    console.log(`   Session created at: ${session.createdAt}`);
+    console.log(`   Current HeyGen session: ${session.heygenSessionId || 'none'}`);
+    console.log(`   Called from: ${new Error().stack.split('\n')[2].trim()}`);
     return session;
   }
 
   // If session is being created, wait for it to complete
-  if (pendingSessions.has(userEmail)) {
-    console.log(`⏳ Waiting for pending session creation for: ${userEmail}`);
-    return pendingSessions.get(userEmail);
+  if (pendingSessions.has(sessionKey)) {
+    console.log(`⏳ Waiting for pending session creation for: ${sessionKey}`);
+    return pendingSessions.get(sessionKey);
   }
 
   // Create new context for this user
-  console.log(`🆕 Creating new browser context for: ${userEmail}`);
+  console.log(`🆕 Creating new browser context for: ${sessionKey}`);
   
   // Create a promise for this session creation
   const sessionPromise = (async () => {
@@ -729,7 +812,7 @@ async function getUserSession(userEmail) {
     throw new Error('Browser not initialized');
   }
 
-  const cookies = await loadUserCookies(userEmail);
+  const cookies = await loadUserCookies(sessionKey);
   
   const context = await browser.newContext({
     ...BROWSER_CONTEXT_OPTIONS,
@@ -744,35 +827,40 @@ async function getUserSession(userEmail) {
   // Navigate to HeyGen home to initialize
   try {
     await page.goto(TARGET, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    console.log(`✅ Initialized page for: ${userEmail}`);
+    console.log(`✅ Initialized page for: ${sessionKey}`);
   } catch (navError) {
-    console.warn(`⚠️  Could not navigate to HeyGen home for ${userEmail}:`, navError.message);
+    console.warn(`⚠️  Could not navigate to HeyGen home for ${sessionKey}:`, navError.message);
   }
 
   const session = {
     context,
     page,
-    userEmail,
-    lastActivity: Date.now()
+    userEmail: sessionKey, // Store sessionKey as userEmail for backward compatibility
+    heygenSessionId: null, // Track which HeyGen session this context is viewing
+    lastActivity: Date.now(),
+    createdAt: new Date().toISOString(),
+    createdBy: (new Error().stack?.split('\n')[2] || 'unknown').trim() // Track where session was created
   };
 
-    userSessions.set(userEmail, session);
-    console.log(`✅ Created new session for: ${userEmail} (Total sessions: ${userSessions.size})`);
+    userSessions.set(sessionKey, session);
+    console.log(`✅ Created new session for: ${sessionKey} (Total sessions: ${userSessions.size})`);
+    console.log(`   Created by: ${session.createdBy}`);
+    console.log(`   All sessions:`, Array.from(userSessions.keys()));
     
     return session;
   })();
   
   // Store the promise so other requests can wait for it
-  pendingSessions.set(userEmail, sessionPromise);
+  pendingSessions.set(sessionKey, sessionPromise);
   
   try {
     const session = await sessionPromise;
     // Remove from pending and return the session
-    pendingSessions.delete(userEmail);
+    pendingSessions.delete(sessionKey);
     return session;
   } catch (error) {
     // Remove from pending on error
-    pendingSessions.delete(userEmail);
+    pendingSessions.delete(sessionKey);
     throw error;
   }
 }
@@ -853,7 +941,8 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: true,
+    executablePath: "/usr/bin/chromium",
+    headless: false,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -936,6 +1025,9 @@ async function reloadBrowserContext() {
   }
 }
 
+// Old endpoint removed - using new chatStorage-based endpoint below
+
+
 // Endpoint to reload browser context (called by auth-server after login)
 proxyRouter.post('/reload-context', async (req, res) => {
   console.log('📥 Received request to reload browser context');
@@ -973,35 +1065,20 @@ proxyRouter.get('/agent/:sessionId', async (req, res) => {
     return res.status(503).json({ success: false, error: 'Browser not initialized' });
   }
   
-  // Extract user email from JWT token in cookie
-  let userEmail = 'anonymous';
-  try {
-    const cookieHeader = req.headers.cookie || '';
-    const cookieMap = {};
-    cookieHeader.split(';').forEach(c => {
-      const [k, v] = c.split('=');
-      if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
-    });
-    const arenaToken = cookieMap['arena_token'];
-    if (arenaToken) {
-      const tokenData = verifyToken(arenaToken);
-      if (tokenData && tokenData.email) {
-        userEmail = tokenData.email;
-      }
-    }
-  } catch (_) {}
+  // Extract sessionKey from JWT token in cookie
+  const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
   
   const relativeUrl = `/agent/${sessionId}`;
   const targetUrl = TARGET + relativeUrl;
-  console.log(`🌐 [HTTP] Navigating to agent session: ${targetUrl} for user: ${userEmail}`);
+  console.log(`🌐 [HTTP] Navigating to agent session: ${targetUrl} for user: ${userEmail} (session: ${sessionKey})`);
   try {
     // Check if session already exists (from WebSocket)
-    let session = userSessions.get(userEmail);
+    let session = userSessions.get(sessionKey);
     if (!session) {
       // Only create new session if one doesn't exist
-      session = await getUserSession(userEmail);
+      session = await getUserSession(sessionKey);
     } else {
-      console.log(`♻️  Reusing existing session for: ${userEmail}`);
+      console.log(`♻️  Reusing existing session for: ${sessionKey}`);
     }
     const { page: agentPage } = session;
     const current = agentPage.url();
@@ -1278,51 +1355,28 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
       return res.json({ success: false, error: 'Browser not initialized' });
     }
     
-    // Extract user email from JWT token in cookie
-    let userEmail = 'anonymous';
-    try {
-      const cookieHeader = req.headers.cookie || '';
-      const cookieMap = {};
-      cookieHeader.split(';').forEach(c => {
-        const [k, v] = c.split('=');
-        if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
-      });
-      const arenaToken = cookieMap['arena_token'];
-      if (arenaToken) {
-        const tokenData = verifyToken(arenaToken);
-        if (tokenData && tokenData.email) {
-          userEmail = tokenData.email;
-          console.log(`🔑 Authenticated user: ${userEmail}`);
-        }
-      }
-    } catch (err) {
-      console.error('Error parsing auth token:', err);
-    }
+    // Extract sessionKey from JWT token in cookie
+    const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
+    console.log(`🔑 Authenticated user: ${userEmail} (session: ${sessionKey})`);
     
-    // If we have an authenticated session, use it instead of anonymous
-    if (userEmail === 'anonymous' && userSessions.has('demo@arenagen.com')) {
-      console.log('🔑 Using demo@arenagen.com session instead of anonymous');
-      userEmail = 'demo@arenagen.com';
-    }
-    
-    console.log(`👤 Submitting prompt for user: ${userEmail}`);
+    console.log(`👤 Submitting prompt for user: ${userEmail} (session: ${sessionKey})`);
     
     // Check if session already exists (from file upload or WebSocket)
-    let session = userSessions.get(userEmail);
+    let session = userSessions.get(sessionKey);
     if (session) {
-      console.log(`♻️  Reusing existing session for: ${userEmail}`);
+      console.log(`♻️  Reusing existing session for: ${sessionKey}`);
     } else {
       // If user is authenticated and we have an anonymous session, migrate it
-      if (userEmail !== 'anonymous' && userSessions.has('anonymous')) {
+      if (sessionKey !== 'anonymous' && userSessions.has('anonymous') && !userSessions.has(sessionKey)) {
         const anonSession = userSessions.get('anonymous');
-        console.log(`🔄 Migrating anonymous session to: ${userEmail}`);
-        userSessions.set(userEmail, anonSession);
-        anonSession.userEmail = userEmail;
+        console.log(`🔄 Migrating anonymous session to: ${sessionKey}`);
+        userSessions.set(sessionKey, anonSession);
+        anonSession.userEmail = sessionKey;
         userSessions.delete('anonymous');
         session = anonSession;
       } else {
         // Only create new session if one doesn't exist
-        session = await getUserSession(userEmail);
+        session = await getUserSession(sessionKey);
       }
     }
     const { page: submitPage } = session;
@@ -1358,7 +1412,8 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     
     // Wait for input field to be ready
     console.log('⏳ Waiting for input field...');
-    const inputSelector = 'div[role="textbox"][contenteditable="true"]';
+    // HeyGen changed to textarea element
+    const inputSelector = 'textarea.tw-resize-none';
     await submitPage.waitForSelector(inputSelector, { state: 'visible', timeout: 60000 });
     
     // Small delay to ensure page is fully interactive
@@ -1397,6 +1452,12 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     const sessionPath = sessionUrl.replace('https://app.heygen.com', '');
     console.log('📍 Session URL:', sessionUrl);
     
+    // Extract and store HeyGen session ID
+    const heygenSessionMatch = sessionUrl.match(/\/agent\/([^/?]+)/);
+    if (heygenSessionMatch) {
+      session.heygenSessionId = heygenSessionMatch[1];
+      console.log(`🔖 Stored HeyGen session ID: ${session.heygenSessionId} for user: ${userEmail}`);
+    }
     
     res.json({
       success: true,
@@ -1424,32 +1485,17 @@ proxyRouter.post('/upload-files', async (req, res) => {
       return res.json({ success: false, error: 'Browser not initialized' });
     }
     
-    // Extract user email from JWT token in cookie
-    let userEmail = 'anonymous';
-    try {
-      const cookieHeader = req.headers.cookie || '';
-      const cookieMap = {};
-      cookieHeader.split(';').forEach(c => {
-        const [k, v] = c.split('=');
-        if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
-      });
-      const arenaToken = cookieMap['arena_token'];
-      if (arenaToken) {
-        const tokenData = verifyToken(arenaToken);
-        if (tokenData && tokenData.email) {
-          userEmail = tokenData.email;
-        }
-      }
-    } catch (_) {}
+    // Extract sessionKey from JWT token in cookie
+    const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
     
-    console.log(`👤 Uploading files for user: ${userEmail}`);
-    // Check if session already exists (from WebSocket)
-    let session = userSessions.get(userEmail);
+    console.log(`📤 [HTTP] Upload files for user: ${userEmail} (session: ${sessionKey})`);
+    
+    // Check if session already exists
+    let session = userSessions.get(sessionKey);
     if (!session) {
-      // Only create new session if one doesn't exist
-      session = await getUserSession(userEmail);
+      session = await getUserSession(sessionKey);
     } else {
-      console.log(`♻️  Reusing existing session for: ${userEmail}`);
+      console.log(`♻️  Reusing existing session for: ${sessionKey}`);
     }
     const { page: uploadFilesPage } = session;
     
@@ -1479,7 +1525,7 @@ proxyRouter.post('/upload-files', async (req, res) => {
     
     // Wait for the chat input to be ready
     console.log('⏳ Waiting for page to be ready...');
-    await uploadFilesPage.waitForSelector('div[role="textbox"][contenteditable="true"]', { state: 'visible', timeout: 10000 });
+    await uploadFilesPage.waitForSelector('textarea.tw-resize-none', { state: 'visible', timeout: 10000 });
     
     // Use DataTransfer API to set files on the hidden file input
     console.log('📤 Setting files via DataTransfer API...');
@@ -1656,32 +1702,17 @@ proxyRouter.post('/upload-files-generate', async (req, res) => {
       return res.json({ success: false, error: 'Browser not initialized' });
     }
     
-    // Extract user email from JWT token in cookie
-    let userEmail = 'anonymous';
-    try {
-      const cookieHeader = req.headers.cookie || '';
-      const cookieMap = {};
-      cookieHeader.split(';').forEach(c => {
-        const [k, v] = c.split('=');
-        if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
-      });
-      const arenaToken = cookieMap['arena_token'];
-      if (arenaToken) {
-        const tokenData = verifyToken(arenaToken);
-        if (tokenData && tokenData.email) {
-          userEmail = tokenData.email;
-        }
-      }
-    } catch (_) {}
+    // Extract sessionKey from JWT token in cookie
+    const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
     
-    console.log(`👤 Uploading files to /generate for user: ${userEmail}`);
-    // Check if session already exists (from WebSocket)
-    let session = userSessions.get(userEmail);
+    console.log(`📤 [HTTP] Upload files and generate for user: ${userEmail} (session: ${sessionKey})`);
+    
+    // Check if session already exists
+    let session = userSessions.get(sessionKey);
     if (!session) {
-      // Only create new session if one doesn't exist
-      session = await getUserSession(userEmail);
+      session = await getUserSession(sessionKey);
     } else {
-      console.log(`♻️  Reusing existing session for: ${userEmail}`);
+      console.log(`♻️  Reusing existing session for: ${sessionKey}`);
     }
     const { page: uploadGenPage } = session;
     
@@ -1708,7 +1739,7 @@ proxyRouter.post('/upload-files-generate', async (req, res) => {
     
     // Wait for the chat input to be ready
     console.log('⏳ Waiting for page to be ready...');
-    await uploadGenPage.waitForSelector('div[role="textbox"][contenteditable="true"]', { state: 'visible', timeout: 10000 });
+    await uploadGenPage.waitForSelector('textarea.tw-resize-none', { state: 'visible', timeout: 10000 });
     
     // Use DataTransfer API to set files on the hidden file input
     console.log('📤 Setting files via DataTransfer API...');
@@ -1858,6 +1889,24 @@ async function handleWebSocketMessage(ws, data, session = null) {
       return;
       
     case 'navigate':
+      // Block all navigations to agent URLs, regardless of source
+      if (data.url && (data.url.includes('/agent/') || data.url.includes('heygen.com/agent'))) {
+        console.log('⏩ BLOCKED navigation to agent URL:', data.url);
+        console.log('   - loadFromHistory flag:', data.loadFromHistory || 'not set');
+        console.log('   - Navigation source:', new Error().stack.split('\n')[2].trim());
+        
+        // Send a success response without actually navigating
+        ws.send(JSON.stringify({ 
+          action: 'navigate', 
+          status: 'success',
+          url: data.url,
+          blocked: true,
+          message: 'Navigation to agent URL blocked',
+          timestamp: new Date().toISOString()
+        }));
+        return;
+      }
+      
       const targetUrl = TARGET + data.url;
       console.log(`🌐 Navigating to: ${targetUrl}`);
       try {
@@ -2409,6 +2458,8 @@ async function handleWebSocketMessage(ws, data, session = null) {
 
         case 'get_messages':
           console.log('📬 [get_messages] Fetching messages from current page');
+          console.log('👤 [get_messages] Session user:', session?.userEmail || 'unknown');
+          console.log('🔑 [get_messages] WebSocket user:', ws.user?.email || 'unknown');
           let fetchedMessages = null;
           try {
             if (!session?.page) {
@@ -2472,6 +2523,22 @@ async function handleWebSocketMessage(ws, data, session = null) {
                 // Skip empty messages that aren't from the user
                 if (!text && !isUser) return;
                 
+                // Skip messages containing the limit reached text (case insensitive and handles different service names)
+                if (!isUser) {
+                  const limitPatterns = [
+                    // /reached.*video agent/i,
+                    /reached/i,
+                    /unlimited mode/i,
+                    /generative credits/i
+                  ];
+                  
+                  const shouldSkip = limitPatterns.some(pattern => pattern.test(text));
+                  if (shouldSkip) {
+                    console.log('⏭️ [get_messages] Skipping limit message:', text.substring(0, 50) + '...');
+                    return;
+                  }
+                }
+                
                 messages.push({
                   role: isUser ? 'user' : 'assistant',
                   text: text || '',
@@ -2492,6 +2559,14 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   break;
                 }
               }
+            }
+            
+            // Transform 'assistant' role to 'agent' for frontend compatibility
+            if (Array.isArray(fetchedMessages)) {
+              fetchedMessages = fetchedMessages.map(msg => ({
+                ...msg,
+                role: msg.role === 'assistant' ? 'agent' : msg.role
+              }));
             }
             
             // Store messages and video data for chat history
@@ -2634,6 +2709,13 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   // Check if this is a video card (not a chat row)
                   // Video cards have these specific classes and contain a thumbnail image
                   if (row.classList.contains('tw-flex-col') && row.classList.contains('tw-rounded-2xl') && row.classList.contains('tw-bg-fill-general')) {
+                    // Skip preloader cards - they have brand colors and a progress indicator
+                    const isPreloader = row.classList.contains('tw-border-brand') && row.classList.contains('tw-bg-more-brandLighter');
+                    if (isPreloader) {
+                      console.log('[get_messages] Skipping preloader card (brand colors detected)');
+                      return null;
+                    }
+                    
                     const thumbnailImg = row.querySelector('img[alt="draft thumbnail"]');
                     const videoElement = row.querySelector('video');
                     const titleElement = row.querySelector('.tw-text-base.tw-font-bold.tw-tracking-tight');
@@ -2686,6 +2768,12 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   if (isUser) {
                     const userBubble = row.querySelector('.tw-bg-fill-block');
                     const text = userBubble ? userBubble.innerText.trim() : '';
+                    
+                    // Skip composite messages that contain chat history context
+                    if (text && text.includes('This is the context of our previous chat:')) {
+                      console.log('[get_messages] Skipping composite message with chat history');
+                      return null;
+                    }
                     
                     // Check for attached images in user message
                     const attachedImages = [];
@@ -2746,6 +2834,23 @@ async function handleWebSocketMessage(ws, data, session = null) {
                     console.log('Agent message text length:', text.length);
                   } else {
                     console.log('No reply element found for agent row');
+                  }
+
+
+                  // ✅ ADD THE CHECK HERE - after text is extracted
+                  if (text) {
+                    const limitPatterns = [
+                      /reached.*limit/i,
+                      /add generative credits/i,
+                      /switch to unlimited mode/i,
+                      /video agent.*limit/i
+                    ];
+                    
+                    const shouldSkip = limitPatterns.some(pattern => pattern.test(text));
+                    if (shouldSkip) {
+                      console.log('⏭️ [get_messages] Skipping limit message:', text.substring(0, 50) + '...');
+                      return null; // Return null instead of nothing
+                    }
                   }
                   
                   // Check for video completion card - get_messages action
@@ -2843,24 +2948,25 @@ async function handleWebSocketMessage(ws, data, session = null) {
                 return { messages: deduped };
               });
               
-              // If we extracted a video from clicking the card, add it as a standalone video message
-              if (page._extractedVideo && fetchedMessages && fetchedMessages.messages) {
-                const videoData = page._extractedVideo;
-                const videoMessage = {
-                  role: 'agent',
-                  text: '',
-                  video: {
-                    thumbnail: videoData.poster || '',
-                    videoUrl: videoData.videoUrl,
-                    poster: videoData.poster || '',
-                    title: videoData.title || 'Your video is ready!'
-                  }
-                };
-                // Add to the end of messages
-                fetchedMessages.messages.push(videoMessage);
-                console.log('➕ [get_messages] Added video message to messages array');
-                // Clear the extracted video
+              // Clear any extracted video data (no longer needed - DOM evaluation handles video cards)
+              if (page._extractedVideo) {
                 delete page._extractedVideo;
+              }
+              
+              // Check for HeyGen error messages
+              const errorElement = await page.evaluate(() => {
+                const errorDiv = document.querySelector('.tw-bg-more-redLighter');
+                if (errorDiv) {
+                  const errorText = errorDiv.querySelector('.tw-text-textTitle');
+                  return errorText ? errorText.innerText.trim() : 'Something went wrong';
+                }
+                return null;
+              });
+              
+              if (errorElement) {
+                console.log('⚠️ [get_messages] HeyGen error detected:', errorElement);
+                fetchedMessages.error = errorElement;
+                fetchedMessages.hasError = true;
               }
             }
             // Near line 1545, after: fetchedMessages = await page.evaluate(() => { ... });
@@ -3280,7 +3386,7 @@ async function handleWebSocketMessage(ws, data, session = null) {
             console.log(`📤 Uploading ${files.length} files via WebSocket`);
             
             // Wait for the chat input to be ready
-            await uploadPage.waitForSelector('div[role="textbox"][contenteditable="true"]', { state: 'visible', timeout: 10000 });
+            await uploadPage.waitForSelector('textarea.tw-resize-none', { state: 'visible', timeout: 10000 });
             
             // Use DataTransfer API to set files on the hidden file input
             const uploadSuccess = await uploadPage.evaluate(async (filesData) => {
@@ -3381,7 +3487,7 @@ async function handleWebSocketMessage(ws, data, session = null) {
             }
             
             // Find and fill the input field
-            const inputSelector = 'div[role="textbox"][contenteditable="true"]';
+            const inputSelector = 'textarea.tw-resize-none';
             await sendPage.waitForSelector(inputSelector, { state: 'visible', timeout: 10000 });
             await sendPage.click(inputSelector);
             await sendPage.fill(inputSelector, message);
@@ -3524,7 +3630,71 @@ async function handleWebSocketMessage(ws, data, session = null) {
             ws.send(JSON.stringify({ success: false, action: 'save_video', error: err.message }));
           }
           break;
-          // Add this new handler to proxy-server.js in the handleWebSocketMessage function
+
+        case 'save_chat':
+          try {
+            console.log('💬 Saving chat...');
+            const { sessionId, messages, title, composedPrompt } = data;
+            const userEmail = ws.user?.email || 'anonymous';
+            
+            if (!sessionId) {
+              throw new Error('Session ID is required');
+            }
+            
+            if (!messages || !Array.isArray(messages)) {
+              throw new Error('Messages must be an array');
+            }
+            
+            console.log(`💾 Saving chat for session ${sessionId} with ${messages.length} messages`);
+            
+            // Filter out composite messages and empty messages
+            const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
+            const messagesToSave = messages.filter(msg => {
+              // Skip empty messages
+              if (!msg) return false;
+              
+              // Skip messages with no content
+              const hasText = msg.text && msg.text.trim().length > 0;
+              const hasVideo = msg.video && msg.video.videoUrl;
+              const hasImages = msg.images && msg.images.length > 0;
+              if (!hasText && !hasVideo && !hasImages) return false;
+              
+              // Skip composite messages
+              if (msg.role === 'user' && msg.text) {
+                const t = normalizeForCompare(msg.text);
+                if (t.includes('This is the context of our previous chat:')) {
+                  return false;
+                }
+              }
+              
+              return true;
+            });
+            
+            console.log(`💾 Filtered ${messages.length - messagesToSave.length} invalid messages on backend`);
+
+            // Save chat using our new chat storage module
+            const result = await chatStorage.updateChat(sessionId, messagesToSave, userEmail, title);
+            
+            if (result) {
+              console.log(`✅ Chat saved successfully: ${result}`);
+              ws.send(JSON.stringify({ 
+                success: true, 
+                action: 'save_chat', 
+                data: { 
+                  sessionId,
+                  savedAt: new Date().toISOString(),
+                  messageCount: messagesToSave.length,
+                  composedIncluded: !!(typeof composedPrompt === 'string' && composedPrompt.trim().length > 0)
+                } 
+              }));
+            } else {
+              throw new Error('Failed to save chat');
+            }
+          } catch (err) {
+            console.error('❌ Error saving chat:', err);
+            ws.send(JSON.stringify({ success: false, action: 'save_chat', error: err.message }));
+          }
+          break;
 
           case 'extract_all_video_urls':
             console.log('🎜 [extract_all_video_urls] Extracting video URLs from sidebar');
@@ -3824,30 +3994,8 @@ async function handleWebSocketMessage(ws, data, session = null) {
         }
 }
 
-// Chat history API endpoints
-proxyRouter.get('/api/chats', (req, res) => {
-  try {
-    const chats = listChats();
-    res.json({ success: true, chats });
-  } catch (error) {
-    console.error('Error listing chats:', error);
-    res.status(500).json({ success: false, error: 'Failed to list chats' });
-  }
-});
-
-proxyRouter.get('/api/chats/:chatId', (req, res) => {
-  try {
-    const { chatId } = req.params;
-    const chat = loadChat(chatId);
-    if (!chat) {
-      return res.status(404).json({ success: false, error: 'Chat not found' });
-    }
-    res.json({ success: true, chat });
-  } catch (error) {
-    console.error('Error loading chat:', error);
-    res.status(500).json({ success: false, error: 'Failed to load chat' });
-  }
-});
+// Chat history API endpoints are now at /proxy/api/chats and /proxy/api/chats/:chatId
+// These old endpoints have been removed and replaced with the new chatStorage-based endpoints
 
 // Helper function to get messages using the get_messages action
 async function getChatMessages(page) {
@@ -3890,6 +4038,71 @@ async function getChatMessages(page) {
 // ...
 export { proxyRouter, initBrowser, setupWebSocketServer };
 
+// API to list user's chats
+proxyRouter.get('/api/chats', async (req, res) => {
+  try {
+    // Get sessionKey from JWT token in cookie
+    const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
+    
+    console.log(`📚 [GET /api/chats] Fetching chats for user: ${userEmail} (session: ${sessionKey})`);
+    
+    // Get chats for this user
+    const chats = await chatStorage.getUserChats(userEmail);
+    res.json({ success: true, chats });
+  } catch (error) {
+    console.error('Error listing chats:', error);
+    res.status(500).json({ success: false, error: 'Failed to list chats' });
+  }
+});
+
+// API to get a specific chat
+proxyRouter.get('/api/chats/:chatId', async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    
+    // Get sessionKey from JWT token in cookie
+    const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
+    
+    console.log(`📚 [GET /api/chats/:chatId] Fetching chat ${chatId} for user: ${userEmail} (session: ${sessionKey})`);
+    
+    // Get the chat
+    const chat = await chatStorage.getChatById(chatId, userEmail);
+    
+    if (!chat) {
+      console.error(`❌ Chat not found: ${chatId} for user ${userEmail}`);
+      return res.status(404).json({ success: false, error: 'Chat not found' });
+    }
+    
+    console.log(`✅ Successfully retrieved chat ${chatId}`);
+    res.json({ success: true, chat });
+  } catch (error) {
+    console.error('Error getting chat:', error);
+    res.status(500).json({ success: false, error: 'Failed to get chat' });
+  }
+});
+
+// API to delete a specific chat
+proxyRouter.delete('/api/chats/:chatId', async (req, res) => {
+  try {
+    const { chatId } = req.params;
+
+    // Get sessionKey from JWT token in cookie
+    const { sessionKey, email: userEmail } = getSessionKeyFromRequest(req);
+    console.log(`✅ Authenticated user: ${userEmail} (session: ${sessionKey})`);
+    
+    console.log(`🗑️ Deleting chat ${chatId} for user ${userEmail}`);
+
+    const deleted = await chatStorage.deleteChat(chatId, userEmail);
+    if (!deleted) {
+      return res.status(404).json({ success: false, error: 'Chat not found or could not be deleted' });
+    }
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete chat' });
+  }
+});
 
 // API to list user's videos
 proxyRouter.get('/api/videos', async (req, res) => {
@@ -3964,6 +4177,62 @@ proxyRouter.get('/api/videos', async (req, res) => {
   }
 });
 
+// API to delete a specific video
+proxyRouter.delete('/api/videos/:videoId', async (req, res) => {
+  try {
+    const { videoId } = req.params;
+
+    // Get user email from JWT token in cookie
+    let userEmail = 'unknown_user';
+    try {
+      const cookieHeader = req.headers.cookie || '';
+      const cookieMap = {};
+      cookieHeader.split(';').forEach(c => {
+        const [k, v] = c.split('=');
+        if (k && v) cookieMap[k.trim()] = decodeURIComponent(v.trim());
+      });
+      const arenaToken = cookieMap['arena_token'];
+      if (arenaToken) {
+        const tokenData = verifyToken(arenaToken);
+        if (tokenData && tokenData.email) {
+          userEmail = tokenData.email;
+        }
+      }
+    } catch (_) {}
+
+    const userDirName = userEmail.replace(/[@.]/g, '_');
+    const userDir = path.join(UPLOADS_DIR, userDirName);
+
+    // Resolve video and thumbnail paths
+    const videoPath = path.join(userDir, videoId);
+    const thumbPath = videoId.endsWith('.mp4')
+      ? path.join(userDir, videoId.replace(/\.mp4$/, '.jpg'))
+      : path.join(userDir, `${videoId}.jpg`);
+
+    if (!fs.existsSync(videoPath)) {
+      return res.status(404).json({ success: false, error: 'Video not found' });
+    }
+
+    try {
+      fs.unlinkSync(videoPath);
+      if (fs.existsSync(thumbPath)) {
+        try {
+          fs.unlinkSync(thumbPath);
+        } catch (thumbErr) {
+          console.warn('Error deleting thumbnail:', thumbErr.message);
+        }
+      }
+      return res.json({ success: true });
+    } catch (err) {
+      console.error('Error deleting video file:', err);
+      return res.status(500).json({ success: false, error: 'Failed to delete video' });
+    }
+  } catch (error) {
+    console.error('Error in delete video handler:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete video' });
+  }
+});
+
 // Add static file serving for uploads directory
 proxyRouter.use('/uploads', express.static(UPLOADS_DIR));
 
@@ -3977,29 +4246,30 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`📁 Using data directory: ${__dirname}/data`);
       console.log(`🔒 JWT secret: ${process.env.AUTH_SECRET ? 'Set' : 'Not set'}`);
       
-      // Test saveChat function
+      // Test chatStorage functions
       (async () => {
         try {
-          console.log('🧪 Testing saveChat function...');
+          console.log('🧪 Testing chat storage functions...');
           const testChatId = 'test_chat_' + Date.now();
           const testMessages = [
             { role: 'user', text: 'Hello, world!', timestamp: new Date().toISOString() },
             { role: 'assistant', text: 'Hi there!', timestamp: new Date().toISOString() }
           ];
+          const testUserEmail = 'test@example.com';
           
-          console.log('💾 Saving test chat...');
-          const result = await saveChat(testChatId, testMessages);
+          console.log('💾 Saving test chat to user directory...');
+          const result = await chatStorage.updateChat(testChatId, testMessages, testUserEmail);
           if (result) {
-            console.log('✅ Test chat saved successfully:', result.path);
+            console.log('✅ Test chat saved successfully:', result);
             
             // Try to load it back
-            const loaded = await loadChat(testChatId);
+            const loaded = await chatStorage.getChatById(testChatId, testUserEmail);
             console.log('📝 Loaded test chat:', JSON.stringify(loaded, null, 2));
           } else {
             console.error('❌ Failed to save test chat');
           }
         } catch (error) {
-          console.error('❌ Error testing saveChat:', error);
+          console.error('❌ Error testing chat storage:', error);
         }
       })();
     });

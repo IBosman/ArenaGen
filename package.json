@@ -5,7 +5,7 @@
   "description": "POC for rebranding HeyGen using reverse proxy and Playwright authentication",
   "main": "unified-server.js",
   "scripts": {
-    "start": "npx playwright install chromium && node unified-server.js",
+    "start": "node unified-server.js",
     "dev": "DEBUG_FRONTEND=true node main-server.js",
     "start-old": "bash start-all.sh",
     "stop": "bash stop-all.sh",
@@ -27,6 +27,7 @@
     "playwright": "^1.56.1",
     "playwright-extra": "^4.3.6",
     "playwright-extra-plugin-stealth": "^0.0.1",
+    "uuid": "^13.0.0",
     "vite": "^7.1.12",
     "ws": "^8.18.3"
   },

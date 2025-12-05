@@ -217,7 +217,8 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      executablePath: "/usr/bin/chromium",
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -908,7 +909,8 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: true, 
+      executablePath: "/usr/bin/chromium",
+      headless: false, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -991,8 +993,16 @@ authRouter.post('/api/login', async (req, res) => {
       console.log(`✅ Session still valid (expires in ~${timeUntilExpiry} hours)`);
     }
     
-    // Step 3: Issue browser token cookie
-    const token = signToken({ id: user.id, email: user.email, username: user.username, role: user.role });
+    // Step 3: Issue browser token cookie with unique session ID
+    const sessionId = crypto.randomUUID(); // Generate unique session ID for this login
+    console.log(`🔑 Generated session ID for ${user.email}: ${sessionId}`);
+    const token = signToken({ 
+      id: user.id, 
+      email: user.email, 
+      username: user.username, 
+      role: user.role,
+      sessionId: sessionId // Add unique session ID to allow concurrent logins
+    });
     const isProduction = process.env.NODE_ENV === 'production';
     const cookie = [
       `arena_token=${token}`,

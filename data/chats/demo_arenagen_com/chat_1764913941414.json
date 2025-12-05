@@ -1,0 +1,19 @@
+{
+  "id": "chat_1764913941414",
+  "title": "video",
+  "createdAt": "2025-12-05T05:52:21.416Z",
+  "updatedAt": "2025-12-05T06:21:09.681Z",
+  "messages": [
+    {
+      "role": "agent",
+      "text": "Great! I've successfully generated the video based on your plan. Let me know what you think, or if you'd like to create another video.",
+      "video": {
+        "thumbnail": "https://resource2.heygen.ai/video/transcode/cf2bcdd2d0a34a089e640d16c088c418/v777733d26bd14e55a856ed53809237c0/1920x1080.jpeg",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/cf2bcdd2d0a34a089e640d16c088c418/v777733d26bd14e55a856ed53809237c0/1920x1080.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Nature%2527s%2520Serene%2520Beauty.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/cf2bcdd2d0a34a089e640d16c088c418/v777733d26bd14e55a856ed53809237c0/1920x1080.jpeg",
+        "title": "video"
+      }
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

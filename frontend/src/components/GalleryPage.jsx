@@ -8,6 +8,7 @@ const GalleryPage = () => {
   const [error, setError] = useState(null);
   const [selectedVideo, setSelectedVideo] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [videoToDelete, setVideoToDelete] = useState(null);
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -95,6 +96,44 @@ const GalleryPage = () => {
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  };
+
+  const handleDeleteVideo = async (video) => {
+    if (!video || !video.id) return;
+
+    try {
+      const baseUrl = window.location.origin;
+      const response = await fetch(`${baseUrl}/proxy/api/videos/${encodeURIComponent(video.id)}`, {
+        method: 'DELETE',
+        credentials: 'include',
+      });
+
+      if (!response.ok) {
+        console.error('Failed to delete video:', await response.text());
+        return;
+      }
+
+      const data = await response.json();
+      if (!data.success) {
+        console.error('Delete video response not successful:', data);
+        return;
+      }
+
+      setVideos(prev => prev.filter(v => v.id !== video.id));
+
+      if (selectedVideo && selectedVideo.id === video.id) {
+        setSelectedVideo(null);
+        if (videoRef.current) {
+          videoRef.current.pause();
+          setIsPlaying(false);
+        }
+      }
+
+      // Clear pending delete state
+      setVideoToDelete(null);
+    } catch (err) {
+      console.error('Error deleting video:', err);
+    }
   };
 
   return (
@@ -200,6 +239,16 @@ const GalleryPage = () => {
                         aria-label="Download video"
                       >
                         <Download className="w-5 h-5" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setVideoToDelete(video);
+                        }}
+                        className="bg-red-600 bg-opacity-90 text-white rounded-full p-2 hover:bg-red-700 transition-all"
+                        aria-label="Delete video"
+                      >
+                        <X className="w-5 h-5" />
                       </button>
                     </div>
                     
@@ -328,6 +377,36 @@ const GalleryPage = () => {
                   Download video
                 </a>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {videoToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setVideoToDelete(null)}>
+          <div
+            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete video</h2>
+            <p className="text-sm text-gray-700 mb-6">
+              Are you sure you want to delete <span className="font-medium">{videoToDelete.title}</span>?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                className="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                onClick={() => setVideoToDelete(null)}
+              >
+                No
+              </button>
+              <button
+                type="button"
+                className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+                onClick={() => handleDeleteVideo(videoToDelete)}
+              >
+                Yes
+              </button>
             </div>
           </div>
         </div>

@@ -1,0 +1,31 @@
+{
+  "id": "chat_1763978751825",
+  "title": "Chat 2025/12/02, 12:32:03",
+  "createdAt": "2025-12-02T10:32:03.856Z",
+  "updatedAt": "2025-12-02T12:22:50.221Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "make a demo video",
+      "timestamp": "2025-11-24T10:08:55.044Z"
+    },
+    {
+      "role": "agent",
+      "text": "I can help with that! What's the topic of your demo video and who is the audience?",
+      "video": null,
+      "timestamp": "2025-11-24T10:08:55.044Z"
+    },
+    {
+      "role": "user",
+      "text": "video generation capabilities",
+      "timestamp": "2025-11-24T10:08:55.044Z"
+    },
+    {
+      "role": "agent",
+      "text": "Topic\tA demo video showcasing video generation capabilities, highlighting key features like AI avatars, script generation, and B-roll integration.\nAudience\tGeneral audience interested in AI video tools, such as content creators and marketers.\nMusic Theme\tUpbeat and modern electronic music to convey innovation and energy.\nVideo Length\tRoughly 15 seconds (short demo format).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, covering an overview of video generation features in a concise, engaging manner.\nTarget Language\tEnglish (United States).\nAvatar\tOne professional-looking avatar: a young adult female with a friendly, approachable style.\nVoice\tAdult female voice with a neutral American accent, clear and enthusiastic.\nSupplemental Footage (B-roll)\tAI illustrations to demonstrate concepts like avatar creation and video editing features.\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-11-24T10:08:55.044Z"
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

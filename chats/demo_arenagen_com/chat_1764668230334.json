@@ -1,0 +1,31 @@
+{
+  "id": "chat_1764668230334",
+  "title": "Chat 2025/12/02, 14:22:34",
+  "createdAt": "2025-12-02T12:22:34.592Z",
+  "updatedAt": "2025-12-02T12:22:46.265Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "This is the context of our previous chat:User: make a demo videoAssistant: I can help with that! What's the topic of your demo video and who is the audience?User: video generation capabilitiesAssistant: Topic\tA demo video showcasing video generation capabilities, highlighting key features like AI avatars, script generation, and B-roll integration.Audience\tGeneral audience interested in AI video tools, such as content creators and marketers.Music Theme\tUpbeat and modern electronic music to convey innovation and energy.Video Length\tRoughly 15 seconds (short demo format).Video Orientation\tPortrait.Script Plan\tThe script will be automatically generated based on the topic, covering an overview of video generation features in a concise, engaging manner.Target Language\tEnglish (United States).Avatar\tOne professional-looking avatar: a young adult female with a friendly, approachable style.Voice\tAdult female voice with a neutral American accent, clear and enthusiastic.Supplemental Footage (B-roll)\tAI illustrations to demonstrate concepts like avatar creation and video editing features.Captions\tEnabled.Would you like to proceed with this plan? Type Yes to continue with this plan.This is my current prompt:disable captions",
+      "timestamp": "2025-12-02T09:44:23.923Z"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I have updated the plan to disable captions.\n\nTopic\tA demo video showcasing video generation capabilities, highlighting key features like AI avatars, script generation, and B-roll integration.\nAudience\tGeneral audience interested in AI video tools, such as content creators and marketers.\nMusic Theme\tUpbeat and modern electronic music to convey innovation and energy.\nVideo Length\tRoughly 15 seconds (short demo format).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, covering an overview of video generation features in a concise, engaging manner.\nTarget Language\tEnglish (United States).\nAvatar\tOne professional-looking avatar: a young adult female with a friendly, approachable style.\nVoice\tAdult female voice with a neutral American accent, clear and enthusiastic.\nSupplemental Footage (B-roll)\tAI illustrations to demonstrate concepts like avatar creation and video editing features.\nCaptions\tDisabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-12-02T09:44:23.923Z"
+    },
+    {
+      "role": "user",
+      "text": "make it landscape",
+      "timestamp": "2025-12-02T09:44:23.923Z"
+    },
+    {
+      "role": "agent",
+      "text": "Got it. I've changed the video orientation to landscape. Here is the updated plan:\n\nTopic\tA demo video showcasing video generation capabilities, highlighting key features like AI avatars, script generation, and B-roll integration.\nAudience\tGeneral audience interested in AI video tools, such as content creators and marketers.\nMusic Theme\tUpbeat and modern electronic music to convey innovation and energy.\nVideo Length\tRoughly 15 seconds (short demo format).\nVideo Orientation\tLandscape.\nScript Plan\tThe script will be automatically generated based on the topic, covering an overview of video generation features in a concise, engaging manner.\nTarget Language\tEnglish (United States).\nAvatar\tOne professional-looking avatar: a young adult female with a friendly, approachable style.\nVoice\tAdult female voice with a neutral American accent, clear and enthusiastic.\nSupplemental Footage (B-roll)\tAI illustrations to demonstrate concepts like avatar creation and video editing features.\nCaptions\tDisabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "timestamp": "2025-12-02T09:44:23.923Z"
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

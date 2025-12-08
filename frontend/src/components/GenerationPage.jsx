@@ -202,7 +202,6 @@ const GenerationPage = () => {
   }, [urlSessionId, sessionId, searchParams, loadChatFromHistory]);
   const [generationProgress, setGenerationProgress] = useState(null);
   const [isGeneratingLocal, setIsGeneratingLocal] = useState(false);
-  const [newAgentMessageAdded, setNewAgentMessageAdded] = useState(false);
   const messagesEndRef = useRef(null);
   const wsRef = useRef(null);
   const processedMessageIds = useRef(new Set());
@@ -229,6 +228,7 @@ const GenerationPage = () => {
   const initialLoadCompleteRef = useRef(false); // Track if initial load is done
   const loadingTimeoutRef = useRef(null); // Track loading timeout to clear it on response
   const isLoadingRef = useRef(false); // Track loading state in closures
+  const loadingStartTimeRef = useRef(null); // Track when we started loading
   const chatHistorySentRef = useRef(false); // Track if chat history context has been sent
   
   // Track the exact composed history+prompt message (normalized) to hide when echoed back
@@ -668,38 +668,57 @@ const GenerationPage = () => {
         // }
 
 
-        // Check if we have any real agent messages (not just video cards)
-        const hasRealAgentMessage = messagesArray.some(m => 
-          m.role === 'agent' && (m.text || m.video?.videoUrl)
+        // Simple rule: If we're loading and incoming messages have a NEW agent message, clear loading
+        // Check if any agent message is newer than when we started loading
+        const incomingAgentMessages = messagesArray.filter(m => 
+          m.role === 'agent' && m.text && m.text.length > 0
         );
-
-        // Count current agent text messages
-        const currentAgentTextCount = messagesArray.filter(m => 
-          m.role === 'agent' && m.text && m.text.length > 0
-        ).length;
-
-        const previousAgentTextCount = previousMessagesRef.current.filter(m => 
-          m.role === 'agent' && m.text && m.text.length > 0
-        ).length;
-
-        // Stop loading if we got a new agent text message
-        console.log('📊 Agent message count check:', {
-          current: currentAgentTextCount,
-          previous: previousAgentTextCount,
+        
+        const existingAgentTexts = previousMessagesRef.current
+          .filter(m => m.role === 'agent' && m.text)
+          .map(m => m.text.trim());
+        
+        console.log('🔍 Checking for new agent messages:', {
+          incomingCount: incomingAgentMessages.length,
+          existingCount: existingAgentTexts.length,
           isLoading: isLoadingRef.current,
-          urlSessionId
+          incomingTexts: incomingAgentMessages.map(m => m.text.substring(0, 50)),
+          existingTexts: existingAgentTexts.map(t => t.substring(0, 50))
         });
         
-        if (currentAgentTextCount > previousAgentTextCount) {
-          console.log('✅ New agent message detected, stopping preloader');
+        const hasNewAgentMessage = incomingAgentMessages.some(m => {
+          const messageText = m.text.trim();
+          const alreadyExists = existingAgentTexts.includes(messageText);
+          
+          console.log('🔍 Checking agent message:', {
+            text: messageText.substring(0, 50),
+            alreadyExists,
+            existingTextsCount: existingAgentTexts.length
+          });
+          
+          if (!alreadyExists) {
+            console.log('🆕 Found new agent message:', messageText.substring(0, 100));
+          }
+          
+          return !alreadyExists;
+        });
+        
+        console.log('📊 Check result:', { 
+          hasNewAgentMessage, 
+          isLoading: isLoadingRef.current,
+          shouldClear: hasNewAgentMessage 
+        });
+        
+        // CRITICAL FIX: Clear loading if we have a new agent message, regardless of isLoadingRef
+        // This handles the case where isLoading state and isLoadingRef get out of sync
+        if (hasNewAgentMessage) {
+          console.log('✅ CLEARING PRELOADER - New agent message detected');
           setIsLoading(false);
           isLoadingRef.current = false;
+          loadingStartTimeRef.current = null;
           setIsGeneratingLocal(false);
-        } else if (isLoadingRef.current && currentAgentTextCount > 0) {
-          console.log('⚠️ We have agent messages but count didnt increase - forcing stop');
-          setIsLoading(false);
-          isLoadingRef.current = false;
-          setIsGeneratingLocal(false);
+        } else {
+          console.log('⏳ Keeping preloader - no new agent message yet');
         }
         
         // Helper function for structured logging
@@ -918,6 +937,10 @@ const GenerationPage = () => {
             });
             console.groupEnd();
             
+            // Check for agent messages BEFORE modifying newMessages array
+            // This way we only stop preloader if there's a real agent response
+            const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
+            
             setMessages(prev => {
               let updated = [...prev];
               
@@ -952,17 +975,6 @@ const GenerationPage = () => {
               previousMessagesRef.current = updated;
               return updated;
             });
-            
-            // Stop loading when new agent message is received
-            const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
-            if (hasNewAgentMessage && isLoadingRef.current) {
-              console.log('✅ New agent message received, stopping preloader');
-              setIsLoading(false);
-              isLoadingRef.current = false;
-              setIsGeneratingLocal(false);
-              // Clear the sent user message tracker now that we have a response
-              lastSentUserMessageRef.current = null;
-            }
           } else {
             console.log('📭 No new messages to append to chat history', {
               totalMessages: sanitizedMessages.length,
@@ -1001,6 +1013,9 @@ const GenerationPage = () => {
         if (newMessages.length > 0 || hasOptimisticMessage) {
           console.log(`📥 Processing ${newMessages.length} new messages (position ${currentMessageCount} onwards), hasOptimistic: ${hasOptimisticMessage}`);
           
+          // Check for agent messages BEFORE modifying newMessages array
+          const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
+          
           setMessages(prev => {
             let updated = [...prev];
             
@@ -1036,15 +1051,6 @@ const GenerationPage = () => {
             previousMessagesRef.current = updated;
             return updated;
           });
-          
-          // Stop loading when new agent message is received
-          const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
-          if (hasNewAgentMessage && isLoadingRef.current) {
-            console.log('✅ New agent message received in active chat, stopping preloader');
-            setIsLoading(false);
-            isLoadingRef.current = false;
-            setIsGeneratingLocal(false);
-          }
         }
         
         // For new chats, use the normal message merging logic
@@ -1217,13 +1223,6 @@ const GenerationPage = () => {
           } catch (_) {}
           return capped;
         });
-        
-        // Stop loading if a new agent message was added
-        if (newAgentMessageAdded && isLoadingRef.current) {
-          console.log('🎉 New agent message detected, stopping preloader');
-          setIsLoading(false);
-          isLoadingRef.current = false;
-        }
         
         return;
       }
@@ -1536,7 +1535,29 @@ const GenerationPage = () => {
       
       // Handle send_message response
       if (data.action === 'send_message') {
-        // ... your existing send_message handler ...
+        if (data.success) {
+          console.log('✅ Message sent successfully via WebSocket');
+          // Clear loading timeout since message was sent
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
+          // Don't clear isLoading here - wait for agent response via get_messages polling
+          // The get_messages handler will detect new agent message and clear loading
+        } else {
+          console.error('❌ Failed to send message:', data.error);
+          // Clear loading state on error
+          if (loadingTimeoutRef.current) {
+            clearTimeout(loadingTimeoutRef.current);
+            loadingTimeoutRef.current = null;
+          }
+          setIsLoading(false);
+          isLoadingRef.current = false;
+          setMessages(prev => [...prev, {
+            role: 'agent',
+            text: `Error sending message: ${data.error}`
+          }]);
+        }
       }
       
       // Handle navigate response
@@ -1751,6 +1772,7 @@ const GenerationPage = () => {
     // Reset all loading states
     setIsLoading(true);
     isLoadingRef.current = true;
+    loadingStartTimeRef.current = Date.now(); // Track when we started loading
     setIsGeneratingLocal(false);
     setGenerationProgress(null);
     

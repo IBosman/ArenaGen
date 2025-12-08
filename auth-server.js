@@ -217,7 +217,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -309,13 +309,6 @@ async function refreshSession() {
     console.log('⏳ Waiting for page to load...');
     await page.waitForLoadState('domcontentloaded', { timeout: 30000 });
 
-    // Give React time to redirect and render the home page
-    await page.waitForTimeout(9000); // 3–5 seconds is usually enough
-    
-    // Wait a bit for any redirects to complete (like in the working POC)
-    console.log('⏳ Waiting for redirect...');
-    await page.waitForTimeout(5000);
-    
     // Poll for the URL to change to /home (handles headless mode better)
     console.log('⏳ Waiting for app.heygen.com/home...');
     let currentUrl = page.url();
@@ -324,7 +317,7 @@ async function refreshSession() {
     
     while (!currentUrl.includes('/home') && attempts < maxAttempts) {
       console.log(`  Current URL: ${currentUrl}`);
-      await page.waitForTimeout(5000);
+      await page.waitForTimeout(3000);
       currentUrl = page.url();
       attempts++;
     }
@@ -341,7 +334,7 @@ async function refreshSession() {
     // Wait for the main chat interface to be ready
     console.log('⏳ Waiting for chat interface...');
     try {
-      await page.waitForSelector('div[role="textbox"][contenteditable="true"]', { 
+      await page.waitForSelector('textarea.tw-resize-none.tw-bg-transparent', { 
         state: 'visible', 
         timeout: 30000 
       });
@@ -703,7 +696,7 @@ authRouter.get('/login', (req, res) => {
 <body>
   <div class="login-container">
     <div class="logo">
-      <svg class="logo-svg" viewBox="0 0 120 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <svg class="logo-svg" viewBox="17 0 130 40" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M20 8L28 20L20 32L12 20L20 8Z" fill="url(#gradient1)"/>
         <path d="M28 20L36 32L28 44L20 32L28 20Z" fill="url(#gradient2)" opacity="0.8"/>
         <defs>
@@ -716,7 +709,7 @@ authRouter.get('/login', (req, res) => {
             <stop offset="1" stop-color="#EC4899"/>
           </linearGradient>
         </defs>
-        <text x="48" y="28" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#1a1a1a">ArenaGen</text>
+        <text x="40" y="28" font-family="Arial, sans-serif" font-size="20" font-weight="bold" fill="#1a1a1a">ArenaGen</text>
       </svg>
       <h1>Welcome back</h1>
       <p>Don't have an account? <a  target="_blank">Sign up</a></p>
@@ -908,7 +901,7 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: true, 
+      headless: false, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',

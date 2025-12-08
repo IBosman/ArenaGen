@@ -1656,22 +1656,12 @@ const GenerationPage = () => {
 
   // Poll for 'Make changes' button and click it when found
   const startMakeChangesPolling = () => {
-    console.log('🔍 [MakeChanges] 1. Entering startMakeChangesPolling');
     debugger; // This will pause execution if dev tools are open
     
     stopMakeChangesPolling(); // Clear any existing interval
-    console.log('🔍 [MakeChanges] 2. Starting Make changes button polling');
-    
-    // Log WebSocket state
-    console.log(`🔍 [MakeChanges] 3. WebSocket state:`, {
-      wsRefExists: !!wsRef.current,
-      wsReadyState: wsRef.current ? wsRef.current.readyState : 'no wsRef',
-      location: window.location.href
-    });
     
     makeChangesPollIntervalRef.current = setInterval(() => {
       const timestamp = new Date().toISOString();
-      console.log(`🔍 [MakeChanges] [${timestamp}] 4. Polling iteration`);
       
       if (!wsRef.current) {
         console.log('🔍 [MakeChanges] 5. WebSocket not initialized, stopping polling');
@@ -1680,10 +1670,8 @@ const GenerationPage = () => {
       }
       
       const wsState = wsRef.current.readyState;
-      console.log(`🔍 [MakeChanges] 6. WebSocket state: ${wsState} (${getWebSocketStateName(wsState)})`);
       
       if (wsState === WebSocket.OPEN) {
-        console.log('🔍 [MakeChanges] 7. Sending find_and_click request');
         try {
           wsRef.current.send(JSON.stringify({ 
             action: 'find_and_click',
@@ -1691,7 +1679,6 @@ const GenerationPage = () => {
             timeout: 2000,
             timestamp: Date.now()
           }));
-          console.log('🔍 [MakeChanges] 8. Successfully sent find_and_click request');
         } catch (error) {
           console.error('❌ [MakeChanges] Error sending find_and_click:', error);
         }
@@ -1710,7 +1697,6 @@ const GenerationPage = () => {
 
   // Poll for 'Continue with Unlimited' button and click it when found
   const startContinueUnlimitedPolling = () => {
-    console.log('🔍 [ContinueUnlimited] 1. Starting Continue with Unlimited button polling');
     
     stopContinueUnlimitedPolling(); // Clear any existing interval
     
@@ -1718,19 +1704,15 @@ const GenerationPage = () => {
     if (!continueUnlimitedPollIntervalRef.current) {
       continueUnlimitedPollIntervalRef.current = setInterval(() => {
         const timestamp = new Date().toISOString();
-        console.log(`🔍 [ContinueUnlimited] [${timestamp}] 2. Polling iteration`);
         
         if (!wsRef.current) {
-          console.log('🔍 [ContinueUnlimited] 3. WebSocket not initialized, stopping polling');
           stopContinueUnlimitedPolling();
           return;
         }
         
         const wsState = wsRef.current.readyState;
-        console.log(`🔍 [ContinueUnlimited] 4. WebSocket state: ${wsState} (${getWebSocketStateName(wsState)})`);
         
         if (wsState === WebSocket.OPEN) {
-          console.log('🔍 [ContinueUnlimited] 5. Sending find_and_click request for Continue with Unlimited');
           try {
             wsRef.current.send(JSON.stringify({ 
               action: 'find_and_click',
@@ -1738,7 +1720,6 @@ const GenerationPage = () => {
               timeout: 2000,
               timestamp: Date.now()
             }));
-            console.log('🔍 [ContinueUnlimited] 6. Successfully sent find_and_click request');
           } catch (error) {
             console.error('❌ [ContinueUnlimited] Error sending find_and_click:', error);
           }
@@ -2080,9 +2061,12 @@ const GenerationPage = () => {
 
   // Auto-save whenever messages change (debounced)
   useEffect(() => {
+    // Use sessionId state instead of urlSessionId from params (replaceState doesn't update params)
+    const activeSessionId = sessionId || urlSessionId;
+    
     // Need a valid session and at least one message
-    if (!urlSessionId || messages.length === 0) {
-      console.log('💾 Auto-save skipped: no session or no messages', { urlSessionId, msgCount: messages.length });
+    if (!activeSessionId || messages.length === 0) {
+      console.log('💾 Auto-save skipped: no session or no messages', { sessionId: activeSessionId, msgCount: messages.length });
       return;
     }
     
@@ -2106,7 +2090,7 @@ const GenerationPage = () => {
       }
       
       try {
-        console.log('💾 Auto-saving chat for session:', urlSessionId, 'messages:', messages.length);
+        console.log('💾 Auto-saving chat for session:', activeSessionId, 'messages:', messages.length);
         
         // Filter out composite messages before saving
         const normalizeForCompare = (s) => (s || '').replace(/\s+/g, ' ').trim();
@@ -2117,11 +2101,10 @@ const GenerationPage = () => {
           return !t.includes('This is the context of our previous chat:');
         });
         
-        console.log(`💾 Filtered ${messages.length - messagesToSave.length} composite messages before saving`);
         lastSavedFingerprintRef.current = fp;
         wsRef.current.send(JSON.stringify({
           action: 'save_chat',
-          sessionId: urlSessionId,
+          sessionId: activeSessionId,
           messages: messagesToSave,
           title: null,
           composedPrompt: lastSentPromptRef.current || null
@@ -2134,7 +2117,7 @@ const GenerationPage = () => {
     return () => {
       if (saveDebounceRef.current) clearTimeout(saveDebounceRef.current);
     };
-  }, [messages, urlSessionId, fingerprintMessages]);
+  }, [messages, sessionId, urlSessionId, fingerprintMessages]);
 
   // Function to save the current chat
   const handleSaveChat = async () => {
@@ -2152,8 +2135,6 @@ const GenerationPage = () => {
         // Skip composite messages that start with "This is the context of our previous chat:"
         return !t.includes('This is the context of our previous chat:');
       });
-      
-      console.log(`💾 Manual save: Filtered ${messages.length - messagesToSave.length} composite messages`);
       
       // Send save_chat request to backend
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
@@ -2209,15 +2190,6 @@ const GenerationPage = () => {
         </svg>
       </button>
         
-        {/* Save Status Notification */}
-        {/* {saveStatus && (
-          <div 
-            className={`absolute top-12 right-0 mt-2 px-4 py-2 rounded-md shadow-md text-sm font-medium transition-opacity duration-300 ${saveStatus === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}
-          >
-            {saveStatus === 'success' ? 'Chat saved successfully!' : 'Failed to save chat'}
-          </div>
-        )} */}
-      
       {/* Header with Logo */}
       <Header />
       
@@ -2267,10 +2239,6 @@ const GenerationPage = () => {
                     </div>
                   )}
                   
-                  {/* {message.video && (
-                    // Video messages are rendered in the unified progress/video card below
-                    null
-                  )} */}
                   {/* Unified Progress/Video Card - now inline with message */}
                   {message.video && (() => {
                     console.log('🎬 Rendering video card/preloader:', {
@@ -2371,17 +2339,6 @@ const GenerationPage = () => {
             </div>
           )}
 
-          {/* Video generation preloader - shows when video is being generated */}
-          {/* {(isGeneratingLocal || generationProgress?.isGenerating) && (
-            <div className="flex justify-start">
-              <VideoGenerationPreloader
-                percentage={generationProgress?.percentage || 0}
-                message={generationProgress?.message || 'Our Video Agent is working on your video'}
-                currentStep={generationProgress?.currentStep || ''}
-              />
-            </div>
-          )} */}
-          
           <div ref={messagesEndRef} />
         </div>
       </div>

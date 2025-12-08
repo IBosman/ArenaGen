@@ -1,0 +1,31 @@
+{
+  "id": "05b343b7-e41f-43ae-8278-cd5831ac9b5e",
+  "title": "disable captions",
+  "createdAt": "2025-12-08T11:02:44.491Z",
+  "updatedAt": "2025-12-08T11:03:04.548Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Make a demo video about nature",
+      "id": "msg_9ad70ba"
+    },
+    {
+      "role": "agent",
+      "text": "I can help with that! Here is a plan for your video.\n\nTopic\tNature demo video\nAudience\tGeneral audience\nMusic Theme\tCalming and inspirational\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tA female presenter in her 30s, with a friendly and engaging demeanor.\nVoice\tA warm and friendly adult female voice.\nSupplemental Footage (B-roll)\tStock media of beautiful nature scenes.\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_57209eaf"
+    },
+    {
+      "role": "user",
+      "text": "disable captions",
+      "id": "msg_3a8f3554"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. Here is the updated plan with captions disabled.\n\nTopic\tNature demo video\nAudience\tGeneral audience\nMusic Theme\tCalming and inspirational\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tA female presenter in her 30s, with a friendly and engaging demeanor.\nVoice\tA warm and friendly adult female voice.\nSupplemental Footage (B-roll)\tStock media of beautiful nature scenes.\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_420abba3"
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

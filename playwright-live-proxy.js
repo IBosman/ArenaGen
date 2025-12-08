@@ -2224,7 +2224,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
           ws.send(JSON.stringify(Object.assign({ action: 'get_messages', success: true, url: targetUrl }, messages ? { messages } : {})));
           break;
           
-        // 'reload' action disabled to avoid interrupting agent responses
           
         case 'back':
           console.log('⬅️ Going back');
@@ -2235,11 +2234,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
           ws.send(JSON.stringify({ success: true }));
           break;
           
-         // Replace the 'initial_load' case in handleWebSocketMessage function in playwright-live-proxy.js
-
-// Replace the 'initial_load' case in handleWebSocketMessage function in playwright-live-proxy.js
-
-
       case 'initial_load':
         console.log('🚀 [initial_load] Starting initial page load with video extraction');
         let initialMessages = [];
@@ -2825,7 +2819,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   console.log(`[get_messages] Processing row ${idx}:`, row.className);
                   
                   // Check if this is a video card (not a chat row)
-                  // Video cards have these specific classes and contain a thumbnail image
                   if (row.classList.contains('tw-flex-col') && row.classList.contains('tw-rounded-2xl') && row.classList.contains('tw-bg-fill-general')) {
                     // Skip preloader cards - they have brand colors and a progress indicator
                     const isPreloader = row.classList.contains('tw-border-brand') && row.classList.contains('tw-bg-more-brandLighter');
@@ -4129,9 +4122,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
             ws.send(JSON.stringify({ success: false, error: `Unknown action: ${action}` }));
         }
 }
-
-// Chat history API endpoints are now at /proxy/api/chats and /proxy/api/chats/:chatId
-// These old endpoints have been removed and replaced with the new chatStorage-based endpoints
 
 // Helper function to get messages using the get_messages action
 async function getChatMessages(page) {

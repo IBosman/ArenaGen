@@ -1,0 +1,31 @@
+{
+  "id": "1ee7da00-cab5-4cc4-9bff-633316f6b2b5",
+  "title": "video generation",
+  "createdAt": "2025-12-08T11:01:58.115Z",
+  "updatedAt": "2025-12-08T11:02:22.816Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "make a demo video",
+      "id": "msg_33a0c7e0"
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant by ArenaGen. I can help you create a video.\n\nTo get started, could you tell me what the demo video will be about and who the intended audience is?",
+      "video": null,
+      "id": "msg_9be4235"
+    },
+    {
+      "role": "user",
+      "text": "video generation",
+      "id": "msg_f540e54"
+    },
+    {
+      "role": "agent",
+      "text": "Great! What specific aspects of video generation should the video focus on? For instance, should it be about AI video generation, mobile video editing, or something else?\n\nAlso, who is the target audience? For example, beginners, professional editors, or marketers?",
+      "video": null,
+      "id": "msg_483f7f09"
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

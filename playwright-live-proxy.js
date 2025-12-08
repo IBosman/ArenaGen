@@ -841,7 +841,8 @@ async function getUserSession(sessionKey) {
     heygenSessionId: null, // Track which HeyGen session this context is viewing
     lastActivity: Date.now(),
     createdAt: new Date().toISOString(),
-    createdBy: (new Error().stack?.split('\n')[2] || 'unknown').trim() // Track where session was created
+    createdBy: (new Error().stack?.split('\n')[2] || 'unknown').trim(), // Track where session was created
+    avatarBoxPollingInterval: null // Store polling interval for avatar box removal
   };
 
     userSessions.set(sessionKey, session);
@@ -881,6 +882,7 @@ async function cleanupInactiveSessions(maxAgeMs = 30 * 60 * 1000) {
   for (const email of toDelete) {
     const session = userSessions.get(email);
     try {
+      stopAvatarBoxPolling(session);
       await session.page.close();
       await session.context.close();
       userSessions.delete(email);
@@ -888,6 +890,92 @@ async function cleanupInactiveSessions(maxAgeMs = 30 * 60 * 1000) {
     } catch (err) {
       console.error(`❌ Error cleaning up session for ${email}:`, err);
     }
+  }
+}
+
+// Helper function to poll for and remove avatar selection box on HeyGen homepage
+async function startAvatarBoxPolling(session) {
+  if (!session || !session.page) {
+    console.warn('⚠️  Cannot start avatar box polling: no session or page');
+    return;
+  }
+  
+  // Stop existing polling if any
+  if (session.avatarBoxPollingInterval) {
+    clearInterval(session.avatarBoxPollingInterval);
+    session.avatarBoxPollingInterval = null;
+  }
+  
+  console.log('🔄 Starting avatar box polling for:', session.userEmail);
+  
+  session.avatarBoxPollingInterval = setInterval(async () => {
+    try {
+      const page = session.page;
+      if (!page || page.isClosed()) {
+        stopAvatarBoxPolling(session);
+        return;
+      }
+      
+      // Check if we're on the homepage
+      const currentUrl = page.url();
+      if (!currentUrl.includes('app.heygen.com/home')) {
+        // Not on homepage, stop polling
+        stopAvatarBoxPolling(session);
+        return;
+      }
+      
+      // Look for the close button on the avatar selection box
+      // The button contains an iconpark-icon with name="close" and has specific positioning classes
+      // IMPORTANT: Must also check for "Avatar" text to avoid closing attached images
+      const closeButtonClicked = await page.evaluate(() => {
+        // Find all buttons with the close icon
+        const closeIcons = document.querySelectorAll('iconpark-icon[name="close"][theme="filled"]');
+        
+        for (const icon of closeIcons) {
+          const button = icon.closest('button');
+          if (button) {
+            // Check if this button has the avatar box positioning classes
+            const classes = button.className;
+            if (classes.includes('tw-absolute') && 
+                classes.includes('-tw-right-2') && 
+                classes.includes('-tw-top-2') &&
+                classes.includes('tw-h-[24px]') &&
+                classes.includes('tw-w-[24px]')) {
+              
+              // Check if the parent container has "Avatar" text
+              const container = button.closest('.tw-group');
+              if (container) {
+                const avatarLabel = container.querySelector('.tw-text-xs.tw-text-textSupport');
+                if (avatarLabel && avatarLabel.textContent.trim() === 'Avatar') {
+                  // This is the avatar box close button
+                  button.click();
+                  return true;
+                }
+              }
+            }
+          }
+        }
+        return false;
+      });
+      
+      if (closeButtonClicked) {
+        console.log('✅ Avatar box close button clicked');
+      }
+    } catch (error) {
+      // Silently ignore errors - page might be navigating or closed
+      if (!error.message.includes('closed') && !error.message.includes('detached')) {
+        console.warn('⚠️  Avatar box polling error:', error.message);
+      }
+    }
+  }, 500); // Poll every 0.5 seconds
+}
+
+// Helper function to stop avatar box polling
+function stopAvatarBoxPolling(session) {
+  if (session && session.avatarBoxPollingInterval) {
+    clearInterval(session.avatarBoxPollingInterval);
+    session.avatarBoxPollingInterval = null;
+    console.log('🛑 Stopped avatar box polling for:', session.userEmail);
   }
 }
 
@@ -1007,6 +1095,7 @@ async function reloadBrowserContext() {
     console.log(`🧹 Closing ${userSessions.size} existing user sessions...`);
     for (const [email, session] of userSessions) {
       try {
+        stopAvatarBoxPolling(session);
         await session.page.close();
         await session.context.close();
         console.log(`  ✅ Closed session for: ${email}`);
@@ -1398,6 +1487,8 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
         });
         // Wait a bit for React to render
         await submitPage.waitForTimeout(2000);
+        // Start avatar box polling
+        startAvatarBoxPolling(session);
       } catch (navError) {
         console.warn('⚠️  Navigation error (likely not authenticated):', navError.message);
         return res.json({ 
@@ -1407,6 +1498,8 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
       }
     } else if (isOnHome) {
       console.log('✅ Already on home page - keeping attached files');
+      // Start avatar box polling since we're on home
+      startAvatarBoxPolling(session);
     } else if (isOnAgent) {
       console.log('✅ Already on agent page - submitting prompt here');
     }
@@ -1524,6 +1617,9 @@ proxyRouter.post('/upload-files', async (req, res) => {
       timeout: 30000 
     });
     console.log('✅ Navigated to home');
+    
+    // Start avatar box polling
+    startAvatarBoxPolling(session);
     
     // Wait for the chat input to be ready
     console.log('⏳ Waiting for page to be ready...');
@@ -3500,6 +3596,8 @@ async function handleWebSocketMessage(ws, data, session = null) {
                 timeout: 30000
               });
               await sendPage.waitForTimeout(2000);
+              // Start avatar box polling
+              startAvatarBoxPolling(session);
             }
             
             const message = data.message;
@@ -4306,6 +4404,7 @@ process.on('SIGINT', async () => {
   console.log(`🧹 Closing ${userSessions.size} user sessions...`);
   for (const [email, session] of userSessions) {
     try {
+      stopAvatarBoxPolling(session);
       await session.page.close();
       await session.context.close();
       console.log(`  ✅ Closed session for: ${email}`);

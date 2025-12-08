@@ -102,22 +102,24 @@ handleWebSocketMessage = async (ws, data, session = null) => {
         const latestVideo = videoUrls[videoUrls.length - 1];
         console.log('🎥 Latest video:', latestVideo);
         
-        // Find the last agent message without a video URL
+        // ONLY update messages that already have a video placeholder (from get_messages)
+        // Do NOT attach videos to random assistant messages
         let updated = false;
         for (let i = extractedMessages.length - 1; i >= 0; i--) {
           const msg = extractedMessages[i];
-          if (msg.role === 'agent' && (!msg.video || !msg.video.videoUrl)) {
-            // Attach the video to this message
+          // Only update if message already has a video object but no videoUrl
+          if (msg.role === 'agent' && msg.video && !msg.video.videoUrl) {
+            // Update the existing video placeholder with the URL
             extractedMessages[i] = {
               ...msg,
               video: {
-                thumbnail: latestVideo.poster || latestVideo.thumbnail || '',
+                ...msg.video, // Keep existing thumbnail/poster/title from get_messages
                 videoUrl: latestVideo.videoUrl,
-                poster: latestVideo.poster || latestVideo.thumbnail || '',
-                title: latestVideo.title || 'Your video is ready!'
+                poster: latestVideo.poster || msg.video.poster || latestVideo.thumbnail || '',
+                title: latestVideo.title || msg.video.title || 'Your video is ready!'
               }
             };
-            console.log(`✅ Attached video to message ${i}: "${msg.text?.substring(0, 50)}..."`);
+            console.log(`✅ Updated video URL for message ${i}: "${msg.text?.substring(0, 50)}..."`);
             updated = true;
             break;
           }
@@ -141,7 +143,7 @@ handleWebSocketMessage = async (ws, data, session = null) => {
             console.error('❌ [handleWebSocketMessage] Error updating chat with video:', error.message);
           }
         } else {
-          console.log('⚠️ No agent message without video found to attach to');
+          console.log('⚠️ No agent message with video placeholder found to update');
         }
       }
     }
@@ -941,7 +943,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: true,
+    headless: false,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -2549,13 +2551,33 @@ async function handleWebSocketMessage(ws, data, session = null) {
               return messages;
             });
             
-            // If we found a video, attach it to the last assistant message
+            // Merge with previously stored messages to preserve video data
+            const previousMessages = page._extractedMessages || [];
+            if (previousMessages.length > 0 && fetchedMessages.length > 0) {
+              // For each new message, check if it matches a previous message and preserve video data
+              fetchedMessages = fetchedMessages.map((newMsg, index) => {
+                // Try to find matching message in previous messages by index and text
+                if (index < previousMessages.length) {
+                  const prevMsg = previousMessages[index];
+                  // If text matches and previous message had video, preserve it
+                  if (prevMsg.text === newMsg.text && prevMsg.video) {
+                    return {
+                      ...newMsg,
+                      video: prevMsg.video
+                    };
+                  }
+                }
+                return newMsg;
+              });
+            }
+            
+            // If we found a video, attach it to the last assistant message that doesn't already have a video
             if (videoData && fetchedMessages && fetchedMessages.length > 0) {
-              // Find the last assistant message
+              // Find the last assistant message without a video
               for (let i = fetchedMessages.length - 1; i >= 0; i--) {
-                if (fetchedMessages[i].role === 'assistant') {
+                if (fetchedMessages[i].role === 'assistant' && !fetchedMessages[i].video) {
                   fetchedMessages[i].video = videoData;
-                  console.log('✅ [get_messages] Attached video to last assistant message');
+                  console.log('✅ [get_messages] Attached video to last assistant message without video');
                   break;
                 }
               }
@@ -3497,7 +3519,7 @@ async function handleWebSocketMessage(ws, data, session = null) {
             
             // Click the submit button - use a more specific selector
             const buttonSelector = 'button[data-loading="false"].tw-bg-brand:not([disabled])';
-            await sendPage.waitForSelector(buttonSelector, { state: 'visible', timeout: 5000 });
+            await sendPage.waitForSelector(buttonSelector, { state: 'visible', timeout: 20000 });
             await sendPage.click(buttonSelector);
             
             console.log('✅ Message sent successfully');

@@ -1,0 +1,76 @@
+{
+  "id": "chat_1765148157549",
+  "title": "video",
+  "createdAt": "2025-12-07T22:55:57.550Z",
+  "updatedAt": "2025-12-08T07:23:27.530Z",
+  "messages": [
+    {
+      "role": "user",
+      "text": "Mina\nAvatar\nMake a demo video",
+      "images": [
+        {
+          "url": "https://files2.heygen.ai/talking_photo/c486243ca701453e8d7cae14351d945b/6e63ee1a622c48a5b681db043c69d376.WEBP?Expires=1765748986&Signature=DIygOakXpTJBqNlKcp4fjI361WPTStMxoEZBXd5SSbRLYRvNEO6OSIBqZMRlIG80lNrZq7m4oqEmNGA-mc0EaAZQkNqc0HTSNS1qiZ5J9kuQH8~rEQVw~q9KSV9pQyAsqUge2bBV154rWNqmdpElnULeO9MRZKSEKY82CMfW6a6Bps91fgZNWL2JLqNc209s-gY8OUkiU7BBU5f4MCG0g3an0mt-GlBuAVGIm1wHLhQlFeOiuDFwA1qoob9u~E52KaxN~o7j4p5MyI3i9UbIHv~AYZHjlNE0Yxfka5Xx8MT9JUE0HtTKNuYF~ffZXTmfEzpAjB6REcoNx3UU3LVf3g__&Key-Pair-Id=K38HBHX5LX3X2H",
+          "alt": "Mina"
+        }
+      ]
+    },
+    {
+      "role": "user",
+      "images": [
+        {
+          "url": "https://files2.heygen.ai/talking_photo/c486243ca701453e8d7cae14351d945b/6e63ee1a622c48a5b681db043c69d376.WEBP?Expires=1765748986&Signature=DIygOakXpTJBqNlKcp4fjI361WPTStMxoEZBXd5SSbRLYRvNEO6OSIBqZMRlIG80lNrZq7m4oqEmNGA-mc0EaAZQkNqc0HTSNS1qiZ5J9kuQH8~rEQVw~q9KSV9pQyAsqUge2bBV154rWNqmdpElnULeO9MRZKSEKY82CMfW6a6Bps91fgZNWL2JLqNc209s-gY8OUkiU7BBU5f4MCG0g3an0mt-GlBuAVGIm1wHLhQlFeOiuDFwA1qoob9u~E52KaxN~o7j4p5MyI3i9UbIHv~AYZHjlNE0Yxfka5Xx8MT9JUE0HtTKNuYF~ffZXTmfEzpAjB6REcoNx3UU3LVf3g__&Key-Pair-Id=K38HBHX5LX3X2H",
+          "alt": "Mina"
+        }
+      ]
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from ArenaGen. I can help you create a great video.\n\nHere is a plan for your demo video.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe avatar you provided: \nConfident Professional in Navy Blazer\n\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null
+    },
+    {
+      "role": "user",
+      "text": "disable captions"
+    },
+    {
+      "role": "agent",
+      "text": "Got it. Here is the updated plan with captions disabled.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe avatar you provided: \nConfident Professional in Navy Blazer\n\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null
+    },
+    {
+      "role": "user",
+      "text": "set orientation to landscape"
+    },
+    {
+      "role": "agent",
+      "text": "No problem. I've updated the orientation to landscape.\n\nHere is the revised plan:\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tlandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe avatar you provided: \nConfident Professional in Navy Blazer\n\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null
+    },
+    {
+      "role": "user",
+      "text": "yes"
+    },
+    {
+      "role": "agent",
+      "text": "Our Video Agent is working on your video .",
+      "video": {
+        "thumbnail": "https://dynamic.heygen.ai/talking_photo/c486243ca701453e8d7cae14351d945b/6e63ee1a622c48a5b681db043c69d376.WEBP",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/6d9e29b781e74920b1070548e1a500f0/v2db86fa15e2146fe945007b612bd73ec/1080x1920.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Product%2520Showcase.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/6d9e29b781e74920b1070548e1a500f0/v2db86fa15e2146fe945007b612bd73ec/1080x1920.jpeg",
+        "title": "video"
+      }
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I've updated the plan to use the new avatar you provided.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tlandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe avatar you provided: \nConfident Professional in Navy Blazer\n\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_3d213579"
+    },
+    {
+      "role": "user",
+      "text": "make a demo video",
+      "id": "msg_33a0c7e0"
+    }
+  ],
+  "userEmail": "demo@arenagen.com"
+}

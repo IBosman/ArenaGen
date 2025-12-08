@@ -1727,11 +1727,14 @@ const GenerationPage = () => {
     // });
 
     try {
-      // If we have an active session, upload files first if any
-      if (sessionPath && wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      // Check if we're sending a composite message with chat history (creates new session on home)
+      const isSendingCompositeMessage = loadFromHistory === 'true' && !chatHistorySentRef.current;
+      
+      // If we have an active session AND we're not sending a composite message, use WebSocket
+      if (sessionPath && wsRef.current && wsRef.current.readyState === WebSocket.OPEN && !isSendingCompositeMessage) {
         // Upload files if attached
         if (attachedFiles.length > 0) {
-          console.log('📤 Uploading', attachedFiles.length, 'files...');
+          console.log('📤 Uploading', attachedFiles.length, 'files via WebSocket...');
           for (const file of attachedFiles) {
             const reader = new FileReader();
             reader.onload = (e) => {
@@ -1764,7 +1767,7 @@ const GenerationPage = () => {
         try { startProgressPolling(); } catch (_) {}
         try { startGetVideoUrlPolling(); } catch (_) {}
       } else {
-        // No session yet, upload files first if any
+        // No session yet OR sending composite message from chat history - upload files to home page
         if (attachedFiles.length > 0) {
           console.log('📤 Uploading', attachedFiles.length, 'files to home page...');
           const fileFormData = new FormData();

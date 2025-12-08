@@ -756,7 +756,13 @@ const GenerationPage = () => {
         
         // Filter out composites, preloaders, and image-only messages before processing
         const filteredMessagesArray = messagesArray.filter(m => !isComposite(m) && !isPreloaderMessage(m) && !isImageOnlyMessage(m));
-        console.log('📊 Filtered initial_load messages:', filteredMessagesArray.length, 'from', messagesArray.length);
+        console.log('📊 Filtered get_messages:', filteredMessagesArray.length, 'from', messagesArray.length);
+        console.log('📊 Filtered messages:', filteredMessagesArray.map((m, i) => ({
+          index: i,
+          role: m.role,
+          text: m.text ? m.text.substring(0, 50) + '...' : 'no-text',
+          hasImages: !!m.images
+        })));
         
         // If we have a plain prompt stored, add it if missing
         if (lastUserPromptRef.current && filteredMessagesArray.every(m => m.role !== 'user')) {
@@ -838,6 +844,12 @@ const GenerationPage = () => {
         
         // If we're in chat history mode, handle message updates carefully
         if (urlSessionId) {
+          console.log('📊 previousMessagesRef.current:', previousMessagesRef.current.map((m, i) => ({
+            index: i,
+            role: m.role,
+            text: m.text ? m.text.substring(0, 50) + '...' : 'no-text'
+          })));
+          
           // Create a set of existing message contents for quick lookup
           const existingContents = new Set(
             previousMessagesRef.current
@@ -845,13 +857,31 @@ const GenerationPage = () => {
               .map(m => m.text.trim())
           );
           
+          console.log('📊 existingContents size:', existingContents.size);
+          console.log('📊 sanitizedMessages to check:', sanitizedMessages.length);
+          
+          // First, check if we have an optimistic user message to replace
+          let hasOptimisticMessage = false;
+          let optimisticMessageText = null;
+          
+          setMessages(prev => {
+            const optimisticMsg = prev.find(m => m.isOptimistic);
+            if (optimisticMsg) {
+              hasOptimisticMessage = true;
+              optimisticMessageText = optimisticMsg.text;
+              console.log('🔄 Found optimistic message to replace:', optimisticMsg.text.substring(0, 50));
+            }
+            return prev;
+          });
+          
           const newMessages = sanitizedMessages.filter(msg => {
             if (!msg.text) return false; // Skip empty messages
             
-            // Skip the user message we just sent to prevent duplication
-            if (msg.role === 'user' && lastSentUserMessageRef.current && msg.text.trim() === lastSentUserMessageRef.current.trim()) {
-              console.log('⏭️  Skipping user message we just sent (lastSentUserMessageRef match):', msg.text.substring(0, 50));
-              return false;
+            // If this is the user message that matches our optimistic message, include it
+            // (we'll replace the optimistic one)
+            if (hasOptimisticMessage && msg.role === 'user' && msg.text.trim() === optimisticMessageText?.trim()) {
+              console.log('✅ Found backend confirmation of optimistic message');
+              return true; // Include it so we can replace the optimistic one
             }
             
             const isNew = !existingContents.has(msg.text.trim());
@@ -863,7 +893,7 @@ const GenerationPage = () => {
                 isNew,
                 inExistingContents: existingContents.has(msg.text.trim()),
                 existingContentsSize: existingContents.size,
-                lastSentUserMessage: lastSentUserMessageRef.current?.substring(0, 50)
+                hasOptimistic: hasOptimisticMessage
               });
             }
             
@@ -876,8 +906,8 @@ const GenerationPage = () => {
             return isNew;
           });
           
-          if (newMessages.length > 0) {
-            console.group('📥 Adding new messages to chat history');
+          if (newMessages.length > 0 || hasOptimisticMessage) {
+            console.group('📥 Processing messages for chat history');
             newMessages.forEach((msg, i) => {
               console.log(`#${i} [${msg.role}]`, {
                 id: msg.id,
@@ -889,12 +919,39 @@ const GenerationPage = () => {
             console.groupEnd();
             
             setMessages(prev => {
-              const updated = [...prev, ...newMessages];
+              let updated = [...prev];
+              
+              // If we have an optimistic message, replace it with the real one from backend
+              if (hasOptimisticMessage) {
+                const optimisticIndex = updated.findIndex(m => m.isOptimistic);
+                if (optimisticIndex !== -1) {
+                  // Find the matching message from backend
+                  const backendMsg = newMessages.find(m => 
+                    m.role === 'user' && m.text.trim() === optimisticMessageText?.trim()
+                  );
+                  
+                  if (backendMsg) {
+                    console.log('🔄 Replacing optimistic message with backend version');
+                    updated[optimisticIndex] = backendMsg; // Replace optimistic with real
+                    // Remove it from newMessages so we don't add it again
+                    const msgIndex = newMessages.indexOf(backendMsg);
+                    if (msgIndex !== -1) {
+                      newMessages.splice(msgIndex, 1);
+                    }
+                  }
+                }
+              }
+              
+              // Add any remaining new messages
+              if (newMessages.length > 0) {
+                updated = [...updated, ...newMessages];
+              }
+              
               console.log(`🔄 Message count: ${prev.length} → ${updated.length}`);
+              // Update previousMessagesRef to match the new state
+              previousMessagesRef.current = updated;
               return updated;
             });
-            
-            previousMessagesRef.current = [...previousMessagesRef.current, ...newMessages];
             
             // Stop loading when new agent message is received
             const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
@@ -923,8 +980,12 @@ const GenerationPage = () => {
         
         if (newMessages.length > 0) {
           console.log(`📥 Appending ${newMessages.length} new messages (position ${currentMessageCount} onwards)`);
-          setMessages(prev => [...prev, ...newMessages]);
-          previousMessagesRef.current = [...previousMessagesRef.current, ...newMessages];
+          setMessages(prev => {
+            const updated = [...prev, ...newMessages];
+            // Update previousMessagesRef to match the new state
+            previousMessagesRef.current = updated;
+            return updated;
+          });
           
           // Stop loading when new agent message is received
           const hasNewAgentMessage = newMessages.some(m => m.role === 'agent' && m.text);
@@ -1664,33 +1725,39 @@ const GenerationPage = () => {
     const currentMessages = [...messages];
     const filteredMessages = currentMessages.filter(msg => msg.role !== 'agent' || !msg.text.includes('Thinking...'));
     
-    // Update UI with user message (only once)
+    // Add user message immediately with a temporary ID for better UX
+    const tempId = `temp_${Date.now()}`;
     const userMessageWithId = { 
       role: 'user', 
       text: userMessage,
-      id: `user_${Date.now()}` // Add unique ID to track this message
+      id: tempId,
+      isOptimistic: true // Mark as optimistic so we can replace it later
     };
     const updatedMessages = [...filteredMessages, userMessageWithId];
     setMessages(updatedMessages);
     
-    // Update previous messages ref
-    previousMessagesRef.current = updatedMessages;
+    // DON'T update previousMessagesRef yet - wait for backend confirmation
+    // This way when get_messages returns, it will see this message as "new" from backend
     
-    // Track this message ID to prevent duplication when get_messages returns it
-    processedMessageIds.current.add(userMessageWithId.id);
-    // Also track the exact text to prevent duplication when backend returns it
-    lastSentUserMessageRef.current = userMessage;
-    console.log('📤 Sent user message:', {
-      id: userMessageWithId.id,
+    console.log('📤 Added optimistic user message to UI:', {
+      id: tempId,
       text: userMessage.substring(0, 50),
       totalMessages: updatedMessages.length,
       previousMessagesCount: previousMessagesRef.current.length
     });
     
+    // Track the exact text to prevent duplication when backend returns it
+    // We'll use this to replace the optimistic message with the real one
+    lastSentUserMessageRef.current = userMessage;
+    
     // Prepare the message to send - include chat history ONLY if this is the first message from a loaded chat history
     let messageToSend = userMessage;
     const loadFromHistory = searchParams.get('loadFromHistory');
-    if (loadFromHistory === 'true' && currentMessages.length > 0 && !chatHistorySentRef.current) {
+    
+    // IMPORTANT: Check this BEFORE setting chatHistorySentRef to true
+    const isFirstMessageFromHistory = loadFromHistory === 'true' && currentMessages.length > 0 && !chatHistorySentRef.current;
+    
+    if (isFirstMessageFromHistory) {
       const chatHistory = currentMessages
         .filter(msg => msg.role && msg.text) // Only include valid messages
         .map(msg => `${msg.role === 'user' ? 'User' : 'Assistant'}: ${msg.text}`)
@@ -1728,26 +1795,32 @@ const GenerationPage = () => {
 
     try {
       // Check if we're sending a composite message with chat history (creates new session on home)
-      const isSendingCompositeMessage = loadFromHistory === 'true' && !chatHistorySentRef.current;
+      const isSendingCompositeMessage = isFirstMessageFromHistory;
       
       // If we have an active session AND we're not sending a composite message, use WebSocket
       if (sessionPath && wsRef.current && wsRef.current.readyState === WebSocket.OPEN && !isSendingCompositeMessage) {
         // Upload files if attached
         if (attachedFiles.length > 0) {
           console.log('📤 Uploading', attachedFiles.length, 'files via WebSocket...');
+          
+          // If we're viewing a loaded chat (even if not first message), we need to navigate to home
+          // because file uploads only work on the home page
+          const needsHomeNavigation = window.location.pathname.startsWith('/generate/');
+          
           for (const file of attachedFiles) {
             const reader = new FileReader();
             reader.onload = (e) => {
               const base64Content = e.target.result;
               wsRef.current.send(JSON.stringify({
                 action: 'upload_files',
+                navigateToHome: needsHomeNavigation, // Tell backend to navigate to home if needed
                 files: [{
                   name: file.name,
                   content: base64Content,
                   type: file.type
                 }]
               }));
-              console.log('📤 Uploaded file:', file.name);
+              console.log('📤 Uploaded file:', file.name, needsHomeNavigation ? '(will navigate to home)' : '');
             };
             reader.readAsDataURL(file);
           }

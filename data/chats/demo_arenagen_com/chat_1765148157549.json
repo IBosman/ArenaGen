@@ -2,7 +2,7 @@
   "id": "chat_1765148157549",
   "title": "Generating your video...",
   "createdAt": "2025-12-07T22:55:57.550Z",
-  "updatedAt": "2025-12-08T07:53:33.486Z",
+  "updatedAt": "2025-12-08T08:49:01.112Z",
   "messages": [
     {
       "role": "user",
@@ -119,6 +119,218 @@
       "text": "Great! Your product demo video has been generated and is ready for you to watch. Let me know if you'd like any edits or a new video!",
       "video": null,
       "id": "msg_7c028c17"
+    },
+    {
+      "role": "user",
+      "text": "Use this as the new avatar",
+      "id": "user_1765181348254"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I've updated the plan to use the new avatar you provided.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tlandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe provided avatar \nSonrisa radiante en un día soleado\n\nVoice\tThe voice of the provided",
+      "video": null,
+      "id": "msg_69625f6c"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I've updated the plan to use the new avatar you provided.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tlandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe provided avatar \nSonrisa radiante en un día soleado\n\nVoice\tThe voice of the provided avatar.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_39cf07d8"
+    },
+    {
+      "role": "user",
+      "text": "make a demo video, use this guy as an avatar",
+      "id": "user_1765181665693"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I've updated the plan to use the new avatar you provided.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tlandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe avatar from the image you provided: Man in a business suit\nVoice\tA professional, adult male voice.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_486ebd96"
+    },
+    {
+      "role": "user",
+      "text": "Make a demo video, use this as an avatr",
+      "id": "user_1765181776062"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I've updated the plan to use the new image you provided as the avatar.\n\nTopic\tProduct Demonstration\nAudience\tPotential Customers\nMusic Theme\tUplifting Corporate\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tlandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tThe avatar from the image you provided: Woman with blonde hair\nVoice\tA friendly, adult female voice.\nSupplemental Footage (B-roll)\tStock media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_3915a56"
+    },
+    {
+      "role": "user",
+      "text": "use this as an avatar",
+      "id": "user_1765182156237"
+    },
+    {
+      "role": "user",
+      "text": "thispersondoesnotexistdddddd.jpeg\nImage\nuse this as an avatar",
+      "images": [
+        {
+          "url": "https://resource2.heygen.ai/image/8a8db4bad9a841dc8d630b2ce8cc70b8/1024x1024.jpeg?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27thispersondoesnotexistdddddd.jpeg%3B",
+          "alt": "thispersondoesnotexistdddddd.jpeg"
+        }
+      ],
+      "id": "msg_107dedbb"
+    },
+    {
+      "role": "agent",
+      "text": "Hi, I'm Video Agent, a helpful AI assistant by ArenaGen. I see you've uploaded an avatar image and selected portrait orientation with auto duration. Here's my proposed plan—let me know what to change!\n\nTopic\tMissing. Need you to provide it for me.\nAudience\tGeneral audience\nMusic Theme\tUpbeat and professional\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tPortrait\nScript Plan\tThe script will be automatically generated based on the topic, audience, and other details.\nTarget Language\tEnglish (United States)\nAvatar\t\nthispersondoesnotexistdddddd.jpeg\n (friendly man, 30s-40s, curly dark hair, blue shirt)\nVoice\tAdult male voice matching the avatar (mid-age, friendly tone)\nSupplemental Footage (B-roll)\tNo B-roll\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_34e7591e"
+    },
+    {
+      "role": "agent",
+      "text": "Thanks for confirming! The topic is still missing—what's the video about (e.g., a product demo, welcome message)? Any script or other details?\n\nOnce provided, I'll update the plan and generate.",
+      "video": null,
+      "id": "msg_35337d6b"
+    },
+    {
+      "role": "user",
+      "text": "your video generation abilities",
+      "id": "msg_3605123"
+    },
+    {
+      "role": "user",
+      "text": "disable the captions",
+      "id": "user_1765182643496"
+    },
+    {
+      "role": "agent",
+      "text": "Hi! I'm Video Agent, a helpful AI assistant by ArenaGen. I noted your settings: portrait orientation, auto duration (~15s), and captions disabled—what's the topic, audience, or script for the video?",
+      "video": null,
+      "id": "msg_7ecc0f00"
+    },
+    {
+      "role": "user",
+      "text": "use this as an avatar",
+      "id": "user_1765182680230"
+    },
+    {
+      "role": "user",
+      "text": "thispersondoesnotexisdddfafat.jpeg\nImage\nuse this as an avatar",
+      "images": [
+        {
+          "url": "https://resource2.heygen.ai/image/ee45b7cc699c42219dc884d84be9be7c/1024x1024.jpeg?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27thispersondoesnotexisdddfafat.jpeg%3B",
+          "alt": "thispersondoesnotexisdddfafat.jpeg"
+        }
+      ],
+      "id": "msg_2d8a9b55"
+    },
+    {
+      "role": "agent",
+      "text": "Perfect, I'll use your uploaded image \nthispersondoesnotexisdddfafat.jpeg\n as the avatar—a professional woman with dark hair smiling confidently.\n\nWhat's the topic, script, or main idea for the video? Any details on audience, language, or length?",
+      "video": null,
+      "id": "msg_3b78e0c0"
+    },
+    {
+      "role": "user",
+      "text": "make it about your generation abliities as I said",
+      "id": "msg_2349fa4"
+    },
+    {
+      "role": "agent",
+      "text": "Here's my proposed plan for a short video showcasing ArenaGen Video Agent's generation abilities, using your avatar image:\n\nTopic\tArenaGen Video Agent's video generation abilities (e.g., creating videos from ideas, adding avatars, B-roll, and more).\nAudience\tPotential users curious about AI video tools.\nMusic Theme\tEnergetic, modern electronic (upbeat tech vibe).\nVideo Length\tRoughly 15 seconds (short-form portrait video).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, highlighting key features like ideation, planning, generation, and edits.\nTarget Language\tEnglish (United States).\nAvatar\tYour uploaded image \nthispersondoesnotexisdddfafat.jpeg\n (professional woman with dark hair).\nVoice\tConfident adult female voice matching the avatar (professional tone).\nSupplemental Footage (B-roll)\tAI illustrations of video creation process (e.g., script to avatar animation demos).\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_d466ea2"
+    },
+    {
+      "role": "agent",
+      "text": "Got it. I've updated the plan to disable captions.\n\nTopic\tArenaGen Video Agent's video generation abilities (e.g., creating videos from ideas, adding avatars, B-roll, and more).\nAudience\tPotential users curious about AI video tools.\nMusic Theme\tEnergetic, modern electronic (upbeat tech vibe).\nVideo Length\tRoughly 15 seconds (short-form portrait video).\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated based on the topic, highlighting key features like ideation, planning, generation, and edits.\nTarget Language\tEnglish (United States).\nAvatar\tYour uploaded image \nthispersondoesnotexisdddfafat.jpeg\n (professional woman with dark hair).\nVoice\tConfident adult female voice matching the avatar (professional tone).\nSupplemental Footage (B-roll)\tAI illustrations of video creation process (e.g., script to avatar animation demos).\nCaptions\tDisabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_5812908e"
+    },
+    {
+      "role": "user",
+      "text": "use this as an avatar",
+      "id": "user_1765183092405"
+    },
+    {
+      "role": "user",
+      "text": "thispersondoesddddnotexist.jpeg\nImage\nuse this as an avatar",
+      "images": [
+        {
+          "url": "https://resource2.heygen.ai/image/4de39543c25647a18583cdaf5eb680a8/1024x1024.jpeg?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27thispersondoesddddnotexist.jpeg%3B",
+          "alt": "thispersondoesddddnotexist.jpeg"
+        }
+      ],
+      "id": "msg_5095fefb"
+    },
+    {
+      "role": "agent",
+      "text": "Hi! I'm Video Agent by ArenaGen. Got it—I'll use your uploaded image \nthispersondoesddddnotexist.jpeg\n (a woman with brown hair and green eyes) as the avatar, with portrait orientation and ~15s duration (auto).\n\nWhat topic, script, or key details do you want for the video (e.g., audience, language)?",
+      "video": null,
+      "id": "msg_51ad9648"
+    },
+    {
+      "role": "agent",
+      "text": "Here's my proposed plan for a short video where the avatar explain",
+      "video": null,
+      "id": "msg_1aa43f67"
+    },
+    {
+      "role": "user",
+      "text": "make it about your video generation abilities",
+      "id": "msg_70329e73"
+    },
+    {
+      "role": "agent",
+      "text": "Here's my proposed plan for a short video where the avatar explains Video Agent's video generation abilities (ideation → planning → generation → edits):\n\nTopic\tVideo Agent's video generation abilities (e.g., turning ideas into videos via planning, AI generation, and quick edits).\nAudience\tGeneral users new to AI video creation.\nMusic Theme\tUpbeat, futuristic tech theme.\nVideo Length\tApproximately 15 seconds.\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated: Avatar introduces Video Agent, highlights key steps (ideation, confirmed plan, generate/edit), and ends with a call to try it.\nTarget Language\tEnglish (United States).\nAvatar\tWoman with brown hair and green eyes from \nthispersondoesddddnotexist.jpeg\n.\nVoice\tAdult female voice matching the avatar—warm, professional, enthusiastic American accent.\nSupplemental Footage (B-roll)\tAI illustrations of video creation steps (e.g., planning table, generation icons).\nCaptions\tEnabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_1120bec8"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. I've updated the plan to disable captions.\n\nTopic\tVideo Agent's video generation abilities (e.g., turning ideas into videos via planning, AI generation, and quick edits).\nAudience\tGeneral users new to AI video creation.\nMusic Theme\tUpbeat, futuristic tech theme.\nVideo Length\tApproximately 15 seconds.\nVideo Orientation\tPortrait.\nScript Plan\tThe script will be automatically generated: Avatar introduces Video Agent, highlights key steps (ideation, confirmed plan, generate/edit), and ends with a call to try it.\nTarget Language\tEnglish (United States).\nAvatar\tWoman with brown hair and green eyes from \nthispersondoesddddnotexist.jpeg\n.\nVoice\tAdult female voice matching the avatar—warm, professional, enthusiastic American accent.\nSupplemental Footage (B-roll)\tAI illustrations of video creation steps (e.g., planning table, generation icons).\nCaptions\tDisabled.\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_3b91e271"
+    },
+    {
+      "role": "user",
+      "text": "Make a demo video, Use this as an avatar",
+      "id": "temp_1765183620199",
+      "isOptimistic": true
+    },
+    {
+      "role": "user",
+      "text": "thispersondoesnoddddafafaftexist.jpeg\nImage\nMake a demo video, Use this as an avatar",
+      "images": [
+        {
+          "url": "https://dynamic.heygen.ai/image/a5c8afa1dbfb40cd80f79332a71c2217/original.jpeg",
+          "alt": "thispersondoesnoddddafafaftexist.jpeg"
+        }
+      ],
+      "id": "msg_f6c9115"
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from ArenaGen. I can help you create a great video.\n\nHere is a plan for your demo video.\n\nTopic\tAI Video Generation Demo\nAudience\tGeneral Audience\nMusic Theme\tUplifting and Inspiring\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tPortrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tI will use the image you provided: \nthispersondoesnoddddafafaftexist.jpeg\n\nVoice\tA standard adult male voice with an American accent.\nSupplemental Footage (B-roll)\tAI media\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_7876a62e"
+    },
+    {
+      "role": "agent",
+      "text": "Of course. Here is the updated plan with captions disabled.\n\nTopic\tAI Video Generation Demo\nAudience\tGeneral Audience\nMusic Theme\tUplifting and Inspiring\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tPortrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tI will use the image you provided: \nthispersondoesnoddddafafaftexist.jpeg\n\nVoice\tA standard adult male voice with an American accent.\nSupplemental Footage (B-roll)\tAI media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_6eef341d"
+    },
+    {
+      "role": "user",
+      "text": "set video to landscape",
+      "id": "msg_31d467e8"
+    },
+    {
+      "role": "agent",
+      "text": "Got it. I've changed the video orientation to landscape.\n\nHere is the updated plan for your review.\n\nTopic\tAI Video Generation Demo\nAudience\tGeneral Audience\nMusic Theme\tUplifting and Inspiring\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tLandscape\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tI will use the image you provided: \nthispersondoesnoddddafafaftexist.jpeg\n\nVoice\tA standard adult male voice with an American accent.\nSupplemental Footage (B-roll)\tAI media\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_4d3a9c1a"
+    },
+    {
+      "role": "user",
+      "text": "make it 10 seconds",
+      "id": "msg_34c7e8f0"
     }
   ],
   "userEmail": "demo@arenagen.com"

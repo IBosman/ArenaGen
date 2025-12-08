@@ -1031,7 +1031,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: true,
+    headless: false,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -3478,7 +3478,7 @@ async function handleWebSocketMessage(ws, data, session = null) {
           break;
           
         case 'upload_files':
-          console.log('📁 Uploading files to agent session');
+          console.log('📁 Uploading files via WebSocket');
           try {
             if (!session?.page) {
               throw new Error('No active browser session');
@@ -3489,12 +3489,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
               return;
             }
             
-            const currentUrl = uploadPage.url();
-            if (!currentUrl.includes('/agent/')) {
-              ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'Not on agent session page' }));
-              return;
-            }
-            
             const files = data.files; // Array of {name, content (base64), type}
             if (!files || files.length === 0) {
               ws.send(JSON.stringify({ success: false, action: 'upload_files', error: 'No files provided' }));
@@ -3502,6 +3496,22 @@ async function handleWebSocketMessage(ws, data, session = null) {
             }
             
             console.log(`📤 Uploading ${files.length} files via WebSocket`);
+            
+            // Check if we need to navigate to home first
+            // This happens when uploading from chat history before sending the composite message
+            const currentUrl = uploadPage.url();
+            const needsHomeNavigation = data.navigateToHome || !currentUrl.includes('app.heygen.com/home');
+            
+            if (needsHomeNavigation && currentUrl.includes('/agent/')) {
+              console.log('🌐 Navigating to home page for file upload (from agent session)...');
+              await uploadPage.goto('https://app.heygen.com/home', { 
+                waitUntil: 'domcontentloaded',
+                timeout: 30000 
+              });
+              await uploadPage.waitForTimeout(2000);
+              // Start avatar box polling
+              startAvatarBoxPolling(session);
+            }
             
             // Wait for the chat input to be ready
             await uploadPage.waitForSelector('textarea.tw-resize-none', { state: 'visible', timeout: 10000 });
@@ -3588,9 +3598,21 @@ async function handleWebSocketMessage(ws, data, session = null) {
             }
             const sendPage = session.page;
             
-            // If user is on the home page in the frontend, navigate to HeyGen home
-            if (data.currentPath === '/home') {
-              console.log('🌐 User is on home page, navigating to HeyGen home to start new chat...');
+            const message = data.message;
+            if (!message || !message.trim()) {
+              ws.send(JSON.stringify({ success: false, error: 'Message is required' }));
+              break;
+            }
+            
+            // Check if message contains chat history context (indicates we need to navigate to home)
+            const isFromChatHistory = message.includes('This is the context of our previous chat:');
+            
+            // If user is on the home page in the frontend OR sending from chat history, navigate to HeyGen home
+            if (data.currentPath === '/home' || isFromChatHistory) {
+              console.log('🌐 Navigating to HeyGen home to start new chat...');
+              if (isFromChatHistory) {
+                console.log('   📚 Detected chat history context - will dump history on home page');
+              }
               await sendPage.goto('https://app.heygen.com/home', { 
                 waitUntil: 'domcontentloaded',
                 timeout: 30000
@@ -3598,12 +3620,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
               await sendPage.waitForTimeout(2000);
               // Start avatar box polling
               startAvatarBoxPolling(session);
-            }
-            
-            const message = data.message;
-            if (!message || !message.trim()) {
-              ws.send(JSON.stringify({ success: false, error: 'Message is required' }));
-              break;
             }
             
             // Find and fill the input field

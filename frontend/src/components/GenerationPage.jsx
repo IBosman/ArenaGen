@@ -973,15 +973,65 @@ const GenerationPage = () => {
           return;
         }
         
-        // For non-chat history mode, use position-based tracking
-        // Content-based IDs change when text streams, so we track by position instead
-        const currentMessageCount = previousMessagesRef.current.length;
+        // For non-chat history mode, handle optimistic messages
+        let hasOptimisticMessage = false;
+        let optimisticMessageText = null;
+        let currentMessagesWithoutOptimistic = [];
+        
+        setMessages(prev => {
+          const optimisticMsg = prev.find(m => m.isOptimistic);
+          if (optimisticMsg) {
+            hasOptimisticMessage = true;
+            optimisticMessageText = optimisticMsg.text;
+            currentMessagesWithoutOptimistic = prev.filter(m => !m.isOptimistic);
+            console.log('🔄 Found optimistic message in active chat:', optimisticMsg.text.substring(0, 50));
+          } else {
+            currentMessagesWithoutOptimistic = prev;
+          }
+          return prev;
+        });
+        
+        // Use the count without optimistic messages for comparison
+        const currentMessageCount = hasOptimisticMessage 
+          ? currentMessagesWithoutOptimistic.length 
+          : previousMessagesRef.current.length;
+        
         const newMessages = sanitizedMessages.slice(currentMessageCount);
         
-        if (newMessages.length > 0) {
-          console.log(`📥 Appending ${newMessages.length} new messages (position ${currentMessageCount} onwards)`);
+        if (newMessages.length > 0 || hasOptimisticMessage) {
+          console.log(`📥 Processing ${newMessages.length} new messages (position ${currentMessageCount} onwards), hasOptimistic: ${hasOptimisticMessage}`);
+          
           setMessages(prev => {
-            const updated = [...prev, ...newMessages];
+            let updated = [...prev];
+            
+            // If we have an optimistic message, replace it with the real one from backend
+            if (hasOptimisticMessage) {
+              const optimisticIndex = updated.findIndex(m => m.isOptimistic);
+              if (optimisticIndex !== -1) {
+                // Find the matching message from backend
+                const backendMsg = newMessages.find(m => 
+                  m.role === 'user' && m.text.trim() === optimisticMessageText?.trim()
+                );
+                
+                if (backendMsg) {
+                  console.log('🔄 Replacing optimistic message with backend version in active chat');
+                  updated[optimisticIndex] = backendMsg; // Replace optimistic with real
+                  // Remove it from newMessages so we don't add it again
+                  const msgIndex = newMessages.indexOf(backendMsg);
+                  if (msgIndex !== -1) {
+                    newMessages.splice(msgIndex, 1);
+                  }
+                } else {
+                  console.log('⚠️ Backend message not found yet, keeping optimistic');
+                }
+              }
+            }
+            
+            // Add any remaining new messages
+            if (newMessages.length > 0) {
+              updated = [...updated, ...newMessages];
+            }
+            
             // Update previousMessagesRef to match the new state
             previousMessagesRef.current = updated;
             return updated;

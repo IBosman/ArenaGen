@@ -12,7 +12,6 @@ import fileUpload from 'express-fileupload';
 import axios from 'axios';
 import { createHash, createHmac } from 'crypto';
 import * as chatStorage from './chat-storage.js';
-import ffmpeg from 'fluent-ffmpeg';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -491,54 +490,15 @@ proxyRouter.post('/save-video', async (req, res) => {
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
-      writer.on('finish', async () => {
+      writer.on('finish', () => {
         console.log(`✅ Video saved: ${filePath}`);
-        
-        // Generate thumbnail using fluent-ffmpeg
-        const thumbnailPath = filePath.replace('.mp4', '-thumbnail.jpg');
-        try {
-          console.log(`🖼️ Generating thumbnail: ${thumbnailPath}`);
-          
-          // Use fluent-ffmpeg to extract first frame at 0.1 seconds
-          await new Promise((resolve, reject) => {
-            ffmpeg(filePath)
-              .screenshots({
-                timestamps: ['0.1'],
-                filename: path.basename(thumbnailPath),
-                folder: path.dirname(thumbnailPath),
-                size: '?x1080' // Maintain aspect ratio, max height 1080px
-              })
-              .on('end', () => {
-                console.log(`✅ Thumbnail generated: ${thumbnailPath}`);
-                resolve();
-              })
-              .on('error', (err) => {
-                console.error('⚠️ FFmpeg error:', err.message);
-                reject(err);
-              });
-          });
-          
-          res.json({ 
-            success: true, 
-            message: 'Video and thumbnail saved successfully', 
-            path: filePath,
-            filename,
-            thumbnailPath,
-            thumbnailFilename: path.basename(thumbnailPath),
-            isDuplicate: false
-          });
-        } catch (ffmpegError) {
-          console.error('⚠️ Failed to generate thumbnail:', ffmpegError.message);
-          // Still return success for video, just note thumbnail failed
-          res.json({ 
-            success: true, 
-            message: 'Video saved successfully (thumbnail generation failed)', 
-            path: filePath,
-            filename,
-            thumbnailError: ffmpegError.message,
-            isDuplicate: false
-          });
-        }
+        res.json({ 
+          success: true, 
+          message: 'Video saved successfully', 
+          path: filePath,
+          filename,
+          isDuplicate: false
+        });
       });
       writer.on('error', (err) => {
         console.error('❌ Error writing file:', err);
@@ -1089,7 +1049,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: false,
+    headless: true,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -4369,7 +4329,7 @@ proxyRouter.get('/api/videos', async (req, res) => {
           .replace(/\b\w/g, l => l.toUpperCase()); // Title case
 
         // Only include thumbnail if the file exists to avoid many 404s
-        const thumbFile = file.replace(/\.mp4$/, '-thumbnail.jpg');
+        const thumbFile = file.replace(/\.mp4$/, '.jpg');
         const thumbPath = path.join(userDir, thumbFile);
         const hasThumb = fs.existsSync(thumbPath);
 
@@ -4424,8 +4384,8 @@ proxyRouter.delete('/api/videos/:videoId', async (req, res) => {
     // Resolve video and thumbnail paths
     const videoPath = path.join(userDir, videoId);
     const thumbPath = videoId.endsWith('.mp4')
-      ? path.join(userDir, videoId.replace(/\.mp4$/, '-thumbnail.jpg'))
-      : path.join(userDir, `${videoId}-thumbnail.jpg`);
+      ? path.join(userDir, videoId.replace(/\.mp4$/, '.jpg'))
+      : path.join(userDir, `${videoId}.jpg`);
 
     if (!fs.existsSync(videoPath)) {
       return res.status(404).json({ success: false, error: 'Video not found' });

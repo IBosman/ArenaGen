@@ -217,7 +217,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: false,
+      headless: true,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -901,7 +901,7 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: false, 
+      headless: true, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',

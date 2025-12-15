@@ -12,6 +12,7 @@ import fileUpload from 'express-fileupload';
 import axios from 'axios';
 import { createHash, createHmac } from 'crypto';
 import * as chatStorage from './chat-storage.js';
+import ffmpeg from 'fluent-ffmpeg';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +23,24 @@ const TARGET = 'https://app.heygen.com';
 const AUTH_SECRET = process.env.AUTH_SECRET || 'dev-secret-change-me';
 
 
+
+// Helper function to extract video title from HeyGen video URL
+function extractVideoTitle(videoUrl) {
+  try {
+    const urlObj = new URL(videoUrl);
+    const disposition = urlObj.searchParams.get('response-content-disposition');
+    if (disposition) {
+      // Parse filename from: attachment; filename*=UTF-8''HeyGen%3A%20Video.mp4;
+      const filenameMatch = disposition.match(/filename\*?=(?:UTF-8'')?([^;]+)/i);
+      if (filenameMatch) {
+        let filename = filenameMatch[1];
+        try { filename = decodeURIComponent(filename); } catch (_) {}
+        return filename.replace(/\.mp4$/i, '').trim();
+      }
+    }
+  } catch (_) {}
+  return null;
+}
 
 // Helper function to merge video URLs into messages
 function mergeVideoUrls(messages, videoUrls) {
@@ -472,15 +491,54 @@ proxyRouter.post('/save-video', async (req, res) => {
     response.data.pipe(writer);
 
     return new Promise((resolve, reject) => {
-      writer.on('finish', () => {
+      writer.on('finish', async () => {
         console.log(`✅ Video saved: ${filePath}`);
-        res.json({ 
-          success: true, 
-          message: 'Video saved successfully', 
-          path: filePath,
-          filename,
-          isDuplicate: false
-        });
+        
+        // Generate thumbnail using fluent-ffmpeg
+        const thumbnailPath = filePath.replace('.mp4', '-thumbnail.jpg');
+        try {
+          console.log(`🖼️ Generating thumbnail: ${thumbnailPath}`);
+          
+          // Use fluent-ffmpeg to extract first frame at 0.1 seconds
+          await new Promise((resolve, reject) => {
+            ffmpeg(filePath)
+              .screenshots({
+                timestamps: ['0.1'],
+                filename: path.basename(thumbnailPath),
+                folder: path.dirname(thumbnailPath),
+                size: '?x1080' // Maintain aspect ratio, max height 1080px
+              })
+              .on('end', () => {
+                console.log(`✅ Thumbnail generated: ${thumbnailPath}`);
+                resolve();
+              })
+              .on('error', (err) => {
+                console.error('⚠️ FFmpeg error:', err.message);
+                reject(err);
+              });
+          });
+          
+          res.json({ 
+            success: true, 
+            message: 'Video and thumbnail saved successfully', 
+            path: filePath,
+            filename,
+            thumbnailPath,
+            thumbnailFilename: path.basename(thumbnailPath),
+            isDuplicate: false
+          });
+        } catch (ffmpegError) {
+          console.error('⚠️ Failed to generate thumbnail:', ffmpegError.message);
+          // Still return success for video, just note thumbnail failed
+          res.json({ 
+            success: true, 
+            message: 'Video saved successfully (thumbnail generation failed)', 
+            path: filePath,
+            filename,
+            thumbnailError: ffmpegError.message,
+            isDuplicate: false
+          });
+        }
       });
       writer.on('error', (err) => {
         console.error('❌ Error writing file:', err);
@@ -1031,7 +1089,7 @@ async function initBrowser(httpServer = null) {
   
   // Launch browser (shared across all users)
   browser = await chromium.launch({
-    headless: true,
+    headless: false,
     args: [
       // '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
@@ -1471,23 +1529,27 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     }
     const { page: submitPage } = session;
     
-    // Navigate to home page ONLY if not already there
+    // Navigate to home page if needed
     const currentUrl = submitPage.url();
     const isOnHome = currentUrl.includes('app.heygen.com/home');
     const isOnAgent = currentUrl.includes('app.heygen.com/agent/');
     
-    // CRITICAL FIX: Don't navigate if already on home page (files might be attached)
-    // Only navigate if we're not on home or agent page
-    if (!isOnHome && !isOnAgent) {
-      console.log('🌐 Navigating to home...');
+    // CRITICAL FIX: If user is on /home in frontend, ALWAYS navigate to HeyGen home
+    // This ensures "New Chat" works correctly even if Playwright is on an agent page
+    const shouldNavigateToHome = isFromHomePage || (!isOnHome && !isOnAgent);
+    
+    if (shouldNavigateToHome && !isOnHome) {
+      console.log(`🌐 Navigating to home...${isFromHomePage ? ' (user clicked New Chat)' : ''}`);
       try {
         await submitPage.goto('https://app.heygen.com/home', { 
           waitUntil: 'domcontentloaded',
           timeout: 30000 
         });
-        // Wait a bit for React to render
-        await submitPage.waitForTimeout(2000);
-        // Start avatar box polling
+        // Wait for the textarea to be visible (ensures page is fully loaded)
+        console.log('⏳ Waiting for page to be fully loaded...');
+        await submitPage.waitForSelector('textarea.tw-resize-none', { state: 'visible', timeout: 30000 });
+        console.log('✅ Page fully loaded');
+        // Start avatar box polling after page is ready
         startAvatarBoxPolling(session);
       } catch (navError) {
         console.warn('⚠️  Navigation error (likely not authenticated):', navError.message);
@@ -1500,16 +1562,16 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
       console.log('✅ Already on home page - keeping attached files');
       // Start avatar box polling since we're on home
       startAvatarBoxPolling(session);
-    } else if (isOnAgent) {
+    } else if (isOnAgent && !isFromHomePage) {
       console.log('✅ Already on agent page - submitting prompt here');
     }
     
     
-    // Wait for input field to be ready
+    // Wait for input field to be ready (should already be visible from navigation check)
     console.log('⏳ Waiting for input field...');
     // HeyGen changed to textarea element
     const inputSelector = 'textarea.tw-resize-none';
-    await submitPage.waitForSelector(inputSelector, { state: 'visible', timeout: 60000 });
+    await submitPage.waitForSelector(inputSelector, { state: 'visible', timeout: 10000 });
     
     // Small delay to ensure page is fully interactive
     await submitPage.waitForTimeout(1000);
@@ -1538,6 +1600,10 @@ proxyRouter.post('/submit-prompt', async (req, res) => {
     await submitPage.waitForTimeout(500);
     await submitPage.screenshot({ path: '/tmp/step4.png' });
     console.log('📸 Screenshot saved: /tmp/step4.png');    
+
+    // Stop avatar box polling before navigation
+    stopAvatarBoxPolling(session);
+    console.log('🛑 Stopped avatar box polling before navigation');
 
     // Wait for navigation to agent session
     console.log('⏳ Waiting for session page...');
@@ -2950,6 +3016,18 @@ async function handleWebSocketMessage(ws, data, session = null) {
 
                   // ✅ ADD THE CHECK HERE - after text is extracted
                   if (text) {
+                    // Skip HeyGen preloader messages (Thinking..., Reasoning, etc.)
+                    const normalizedText = text.toLowerCase().trim();
+                    const isPreloaderText = normalizedText === 'thinking...' ||
+                                           normalizedText === 'thinking' ||
+                                           normalizedText === 'reasoning' ||
+                                           normalizedText === 'reasoning...' ||
+                                           (normalizedText.length < 15 && normalizedText.includes('...'));
+                    if (isPreloaderText) {
+                      console.log('⏭️ [get_messages] Skipping preloader message:', text);
+                      return null;
+                    }
+                    
                     const limitPatterns = [
                       /reached.*limit/i,
                       /add generative credits/i,
@@ -3300,9 +3378,8 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   videoData.videoUrl.startsWith('https://resource2.heygen.ai/') &&
                   !videoData.videoUrl.includes('static.heygen.ai/heygen/asset/liteSharePreviewAnimation.mp4')) {
                 // Extract caption hash from URL
-                // Extract video hash and original filename from URL
+                // Extract video hash from URL
                 let videoHash = null;
-                let originalName = 'video';
                 
                 // Try to match the new URL format first: /video/transcode/HASH/.../resolution.mp4
                 const transcodeMatch = videoData.videoUrl.match(/\/transcode\/([a-f0-9]+)\//i);
@@ -3312,17 +3389,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   // Fall back to the old caption_ format
                   const captionMatch = videoData.videoUrl.match(/caption_([a-f0-9]+)\.mp4/i);
                   videoHash = captionMatch ? captionMatch[1] : null;
-                }
-                
-                // Extract original filename from URL parameters (handle double-encoding)
-                const filenameMatch = videoData.videoUrl.match(/filename[^=]*=([^&;]+)/);
-                if (filenameMatch) {
-                  let nameParam = filenameMatch[1].replace(/\+/g, ' ');
-                  try { nameParam = decodeURIComponent(nameParam); } catch (_) {}
-                  try { nameParam = decodeURIComponent(nameParam); } catch (_) {}
-                  originalName = nameParam
-                    .replace(/\.mp4.*$/, '')
-                    .trim();
                 }
 
                 if (!videoHash) {
@@ -3335,8 +3401,12 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   break;
                 }
 
-                // Use clean title; save endpoint will append -<hash>.mp4
-                const safeTitle = originalName;
+                // Extract title from video URL filename parameter
+                const safeTitle = extractVideoTitle(videoData.videoUrl) || 'Your video is ready!';
+                console.log('📝 [get_video_url] Extracted title:', safeTitle);
+                
+                // Add title to videoData so it's available everywhere
+                videoData.title = safeTitle;
                 
                 // Get user email from WebSocket user object
                 const userEmail = ws.user?.email || 'unknown_user';
@@ -3436,13 +3506,20 @@ async function handleWebSocketMessage(ws, data, session = null) {
             }
 
              // Store video data for chat history merging (fallback case)
+            const extractedTitle = extractVideoTitle(videoData.videoUrl) || 'Your video is ready!';
+            
+            const videoDataWithTitle = {
+              ...videoData,
+              title: extractedTitle
+            };
+            
             if (!session.page._videoUrls) {
               session.page._videoUrls = [];
             }
-            session.page._videoUrls.push(videoData);
+            session.page._videoUrls.push(videoDataWithTitle);
             console.log('💾 Stored video data in _videoUrls for chat history');
             
-            ws.send(JSON.stringify({ success: true, action: 'get_video_url', data: videoData }));
+            ws.send(JSON.stringify({ success: true, action: 'get_video_url', data: videoDataWithTitle }));
           } catch (err) {
             console.error('❌ get_video_url error:', err);
             if (err.message.includes('closed') || err.message.includes('detached')) {
@@ -3801,8 +3878,24 @@ async function handleWebSocketMessage(ws, data, session = null) {
             
             console.log(`💾 Filtered ${messages.length - messagesToSave.length} invalid messages on backend`);
 
+            // Extract titles from video URLs before saving
+            const messagesWithTitles = messagesToSave.map(msg => {
+              if (msg.video && msg.video.videoUrl) {
+                const extractedTitle = extractVideoTitle(msg.video.videoUrl) || msg.video.title || 'Your video is ready!';
+                console.log(`📝 [save_chat] Video title: "${extractedTitle}"`);
+                return {
+                  ...msg,
+                  video: {
+                    ...msg.video,
+                    title: extractedTitle
+                  }
+                };
+              }
+              return msg;
+            });
+
             // Save chat using our new chat storage module
-            const result = await chatStorage.updateChat(sessionId, messagesToSave, userEmail, title);
+            const result = await chatStorage.updateChat(sessionId, messagesWithTitles, userEmail, title);
             
             if (result) {
               console.log(`✅ Chat saved successfully: ${result}`);
@@ -4038,7 +4131,6 @@ async function handleWebSocketMessage(ws, data, session = null) {
               for (const btn of buttons) {
                 const text = (await btn.innerText()).trim();
                 const isVisible = await btn.isVisible();
-                console.log(`🔍 [find_and_click] Checking button: "${text}" (visible: ${isVisible})`);
                 
                 // Check if this button matches the requested selector text
                 const targetText = selector.includes(':has-text(') 
@@ -4277,7 +4369,7 @@ proxyRouter.get('/api/videos', async (req, res) => {
           .replace(/\b\w/g, l => l.toUpperCase()); // Title case
 
         // Only include thumbnail if the file exists to avoid many 404s
-        const thumbFile = file.replace(/\.mp4$/, '.jpg');
+        const thumbFile = file.replace(/\.mp4$/, '-thumbnail.jpg');
         const thumbPath = path.join(userDir, thumbFile);
         const hasThumb = fs.existsSync(thumbPath);
 
@@ -4332,8 +4424,8 @@ proxyRouter.delete('/api/videos/:videoId', async (req, res) => {
     // Resolve video and thumbnail paths
     const videoPath = path.join(userDir, videoId);
     const thumbPath = videoId.endsWith('.mp4')
-      ? path.join(userDir, videoId.replace(/\.mp4$/, '.jpg'))
-      : path.join(userDir, `${videoId}.jpg`);
+      ? path.join(userDir, videoId.replace(/\.mp4$/, '-thumbnail.jpg'))
+      : path.join(userDir, `${videoId}-thumbnail.jpg`);
 
     if (!fs.existsSync(videoPath)) {
       return res.status(404).json({ success: false, error: 'Video not found' });

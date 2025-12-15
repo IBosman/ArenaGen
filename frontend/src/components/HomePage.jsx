@@ -113,7 +113,7 @@ const HomePage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white dark:bg-gray-900">
       {/* Chat History Sidebar */}
       <ChatHistorySidebar 
         isOpen={sidebarOpen} 
@@ -123,11 +123,11 @@ const HomePage = () => {
       {/* Menu Button */}
       <button
         onClick={() => setSidebarOpen(true)}
-        className="fixed top-4 left-4 z-30 p-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200"
+        className="fixed top-4 left-4 z-30 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200 dark:border-gray-700"
         title="Chat History"
       >
         <svg
-          className="w-6 h-6 text-gray-700"
+          className="w-6 h-6 text-gray-700 dark:text-gray-300"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -148,25 +148,25 @@ const HomePage = () => {
         <div className="w-full max-w-3xl space-y-8">
           {/* Hero Text */}
           <div className="text-center space-y-4">
-            <h1 className="text-4xl md:text-5xl font-semibold text-gray-900">
+            <h1 className="text-4xl md:text-5xl font-semibold text-gray-900 dark:text-gray-100">
               Bring any idea to life with Video Agent
             </h1>
-            <p className="text-gray-600 text-base md:text-lg max-w-2xl mx-auto">
+            <p className="text-gray-600 dark:text-gray-400 text-base md:text-lg max-w-2xl mx-auto">
               Now you can generate professional videos from simple prompts. Browse community creations for inspiration, or start fresh with your own vision
             </p>
           </div>
 
           {/* Input Box */}
           <div className="relative">
-            <div className="bg-white border-2 border-gray-200 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden"
+            <div className="bg-white dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-200 overflow-hidden"
                  style={{
                    background: 'linear-gradient(to right, rgba(147, 197, 253, 0.1), rgba(167, 243, 208, 0.1), rgba(253, 224, 71, 0.1))'
                  }}>
-              <div className="bg-white/90 backdrop-blur-sm">
+              <div className="bg-white/90 dark:bg-gray-800/90 backdrop-blur-sm">
                 {/* Input Area */}
                 <div className="p-6">
                   <textarea
-                    className="w-full resize-none border-none outline-none text-gray-900 placeholder-gray-400 text-base bg-transparent"
+                    className="w-full resize-none border-none outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-base bg-transparent"
                     rows="3"
                     placeholder="Share a topic, idea, or instructions with Video Agent to generate a full trailer video"
                     value={prompt}
@@ -178,7 +178,7 @@ const HomePage = () => {
 
                 {/* Attached Files Display */}
                 {attachedFiles.length > 0 && (
-                  <div className="px-6 pb-4 border-t border-gray-200">
+                  <div className="px-6 pb-4 border-t border-gray-200 dark:border-gray-700">
                     <div className="flex flex-wrap gap-4 pt-4">
                       {attachedFiles.map((file, index) => {
                         const isImage = file.type.startsWith('image/');
@@ -186,7 +186,7 @@ const HomePage = () => {
                         
                         return (
                           <div key={index} className="relative group">
-                            <div className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-300 bg-gray-100">
+                            <div className="relative w-24 h-24 rounded-lg overflow-hidden border border-gray-300 dark:border-gray-600 bg-gray-100 dark:bg-gray-700">
                               {preview ? (
                                 <img 
                                   src={preview} 
@@ -194,7 +194,7 @@ const HomePage = () => {
                                   className="w-full h-full object-cover"
                                 />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center bg-gray-200">
+                                <div className="w-full h-full flex items-center justify-center bg-gray-200 dark:bg-gray-600">
                                   <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                                   </svg>
@@ -210,7 +210,7 @@ const HomePage = () => {
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                               </svg>
                             </button>
-                            <p className="text-xs text-gray-600 mt-1 truncate w-24 text-center">{file.name}</p>
+                            <p className="text-xs text-gray-600 dark:text-gray-400 mt-1 truncate w-24 text-center">{file.name}</p>
                           </div>
                         );
                       })}
@@ -235,9 +235,9 @@ const HomePage = () => {
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
                     title="Attach files"
-                    className="p-2 rounded-lg transition-colors hover:bg-gray-100 bg-transparent border border-gray-200 text-gray-600 hover:text-gray-900"
+                    className="p-2 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-700 bg-transparent border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                   >
-                    <svg className="w-5 h-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-5 h-5 text-gray-400 dark:text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
                     </svg>
                   </button>
@@ -249,7 +249,7 @@ const HomePage = () => {
               aria-label="Send"
               onClick={handleSubmit}
               disabled={isSubmitting || (!prompt.trim() && attachedFiles.length === 0)}
-              className="absolute bottom-5 right-6 z-10 w-8 h-8 rounded-full bg-black text-white shadow-md hover:shadow-lg hover:scale-105 transition-transform flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+              className="absolute bottom-5 right-6 z-10 w-8 h-8 rounded-full bg-black dark:bg-gray-700 text-white shadow-md hover:shadow-lg hover:scale-105 transition-transform flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
             >
               {isSubmitting ? (
                 <svg className="w-4 h-4 animate-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

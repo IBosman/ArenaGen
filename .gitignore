@@ -45,3 +45,7 @@ uploads/
 
 # Process IDs
 .pids
+
+
+#Chats
+data/chats/demo_arenagen_com/*

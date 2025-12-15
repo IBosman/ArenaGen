@@ -217,7 +217,7 @@ async function refreshSession() {
   let browser;
   try {
     browser = await chromium.launch({ 
-      headless: true,
+      headless: false,
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -847,7 +847,7 @@ authRouter.get('/login', (req, res) => {
       loginBtn.classList.remove('active');
       loginBtn.innerHTML = '<span class="spinner"></span>Signing in...';
       status.className = 'status loading';
-      status.textContent = '🔐 Authentication...';
+      status.textContent = '🔐 Authenticating...';
       
       try {
         const response = await fetch('/auth/api/login', {
@@ -901,7 +901,7 @@ authRouter.post('/api/bridge/sessions', async (req, res) => {
 
     // Launch a lightweight browser context with stored auth
     browser = await chromium.launch({ 
-      headless: true, 
+      headless: false, 
       args: [
         '--disable-blink-features=AutomationControlled',
         '--no-sandbox',
@@ -1103,7 +1103,8 @@ authRouter.post('/api/submit-prompt', async (req, res) => {
     
     const proxyResponse = await requestContext.post(`${baseUrl}/proxy/submit-prompt`, {
       data: { prompt },
-      headers: headers
+      headers: headers,
+      timeout: 300000 // 5 minutes - HeyGen session creation can take a while
     });
     
     const proxyData = await proxyResponse.json();

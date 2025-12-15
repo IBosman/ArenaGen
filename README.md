@@ -1,228 +1,179 @@
-# HeyGen Rebranding POC
+# ArenaGen
 
-**⚠️ EDUCATIONAL PURPOSES ONLY**
+A video generation platform with automatic thumbnail generation and dark mode support.
 
-This is a proof-of-concept demonstrating how to rebrand a third-party website using reverse proxy and Puppeteer techniques. This likely violates HeyGen's Terms of Service and should not be used in production.
+## Features
 
-## 🎯 What This Does
+- 🎥 Video generation and management
+- 🖼️ Automatic thumbnail generation using FFmpeg
+- 🌙 System-based dark mode
+- 💾 User-specific video storage
+- 📜 Chat history with sidebar
+- 🎨 Modern, responsive UI
 
-This POC demonstrates two approaches to rebrand `https://app.heygen.com`:
+## Quick Start
 
-1. **Reverse Proxy Method** - Intercepts HTTP traffic and modifies responses in real-time
-2. **Puppeteer Method** - Scrapes and re-renders the site with custom branding
-
-## 🚀 Quick Start
-
-### Installation
+### Local Development
 
 ```bash
+# Install dependencies
 npm install
+cd frontend && npm install && cd ..
+
+# Start the server
+npm start
 ```
 
-### Method 1: Reverse Proxy (Recommended)
+### Docker Deployment (Recommended for Production)
 
 ```bash
-npm run proxy
+# Build
+docker build -t arenagen .
+
+# Run
+docker run -p 3000:3000 \
+  -e AUTH_SECRET=your-secret-key \
+  -v $(pwd)/uploads:/app/uploads \
+  arenagen
 ```
 
-Then open: `http://localhost:3000`
+## Deployment
 
-**Features:**
-- ✅ Real-time traffic interception
-- ✅ Maintains all functionality
-- ✅ WebSocket support
-- ✅ Dynamic content rebranding
-- ✅ Custom CSS/JS injection
+### Render.com (Docker)
 
-### Method 2: Puppeteer Scraping
+1. Push your code to GitHub/GitLab
+2. Connect repository to Render
+3. Render will detect `render.yaml` automatically
+4. Click "Create Web Service"
+
+See [DOCKER_DEPLOYMENT.md](./DOCKER_DEPLOYMENT.md) for detailed instructions.
+
+### Environment Variables
+
+```env
+PORT=3000
+NODE_ENV=production
+AUTH_SECRET=your-secret-key-here
+PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH=/usr/bin/chromium
+```
+
+## Documentation
+
+- [Docker Deployment Guide](./DOCKER_DEPLOYMENT.md) - Complete Docker setup and Render deployment
+- [Thumbnail Generation](./THUMBNAIL_GENERATION.md) - How video thumbnails work
+- [FFmpeg Installation](./INSTALL_FFMPEG.md) - Installing FFmpeg for local development
+- [Authentication System](./README_AUTH.md) - User authentication details
+- [Main Server](./README-MAIN-SERVER.md) - Server architecture
+
+## Requirements
+
+### For Docker Deployment (Recommended)
+- Docker installed locally (for testing)
+- Render.com account (or any Docker-compatible host)
+
+### For Local Development
+- Node.js 18+ 
+- FFmpeg installed on system
+- Chromium/Chrome browser
+
+## Project Structure
+
+```
+ArenaGen/
+├── frontend/              # React frontend
+│   ├── src/
+│   │   ├── components/   # React components
+│   │   └── App.js        # Main app
+│   └── package.json
+├── uploads/              # User video storage
+├── Dockerfile            # Docker configuration
+├── render.yaml           # Render deployment config
+├── unified-server.js     # Main server entry
+├── auth-server.js        # Authentication
+├── playwright-live-proxy.js  # Browser automation
+└── package.json
+```
+
+## Key Features
+
+### Automatic Thumbnail Generation
+
+When videos are saved, thumbnails are automatically generated using FFmpeg:
+- Extracts first frame at 0.1 seconds
+- Maintains aspect ratio
+- High quality JPEG output
+- Stored alongside video files
+
+### Dark Mode
+
+System-based dark mode that automatically adapts to user's OS preferences:
+- No toggle needed
+- Smooth transitions
+- Comprehensive coverage across all components
+
+### Video Management
+
+- Upload and generate videos
+- View video gallery with thumbnails
+- Download videos
+- Delete videos (with thumbnail cleanup)
+- User-specific storage
+
+## Development
 
 ```bash
-npm run puppeteer
+# Install dependencies
+npm install
+cd frontend && npm install && cd ..
+
+# Start development server
+npm run dev
+
+# Build frontend
+cd frontend && npm run build
 ```
 
-Then open: `http://localhost:3001`
-
-**Features:**
-- ✅ Full page scraping
-- ✅ Screenshot capability
-- ✅ Server-side rendering
-- ⚠️ May break with authentication
-
-## 🎨 Customization
-
-Edit the `BRANDING` object in either file:
-
-```javascript
-const BRANDING = {
-  oldName: 'HeyGen',
-  newName: 'VideoAI Pro',      // Your brand name
-  primaryColor: '#6366f1',      // Your primary color
-  secondaryColor: '#8b5cf6',    // Your secondary color
-  logoUrl: '/custom-assets/logo.png'  // Your logo
-};
-```
-
-## 📁 Project Structure
-
-```
-ai_video_agent/
-├── proxy-server.js          # Reverse proxy implementation
-├── puppeteer-rebrand.js     # Puppeteer scraping implementation
-├── proxy-rebrand.js         # Original simple proxy
-├── package.json             # Dependencies
-├── custom-assets/           # Your custom branding assets
-│   └── logo.png            # Your logo (create this)
-└── README.md               # This file
-```
-
-## 🛠️ How It Works
-
-### Reverse Proxy Approach
-
-1. **Intercepts** all requests to HeyGen
-2. **Modifies** HTML/JS responses on-the-fly
-3. **Injects** custom CSS and JavaScript
-4. **Replaces** text, logos, and colors
-5. **Proxies** WebSocket connections for real-time features
-
-```
-User Browser → Proxy Server → HeyGen
-                    ↓
-              [Modification]
-                    ↓
-User Browser ← Modified Content
-```
-
-### Puppeteer Approach
-
-1. **Launches** headless Chrome
-2. **Navigates** to HeyGen
-3. **Executes** JavaScript to rebrand DOM
-4. **Extracts** modified HTML
-5. **Serves** via Express server
-
-```
-Puppeteer → HeyGen → Scrape → Modify → Serve
-```
-
-## 🔧 Technical Details
-
-### What Gets Modified
-
-- ✅ Text content (brand names)
-- ✅ Page titles
-- ✅ Colors (CSS variables)
-- ✅ Logos and images
-- ✅ Button styles
-- ✅ Dynamic content (via MutationObserver)
-
-### Security Headers Removed
-
-The proxy removes these headers to allow modifications:
-- `Content-Security-Policy`
-- `X-Frame-Options`
-
-### Challenges
-
-1. **Authentication** - Login sessions may not work properly
-2. **CORS** - Cross-origin requests may fail
-3. **WebSockets** - Real-time features need special handling
-4. **API Calls** - Backend calls may fail due to origin checks
-5. **Updates** - Site changes will break the rebranding
-
-## 📸 Screenshots
-
-Take screenshots with Puppeteer:
+## Testing
 
 ```bash
-# Start the Puppeteer server
-npm run puppeteer
+# Test Docker build
+docker build -t arenagen .
 
-# Then visit:
-http://localhost:3001/screenshot
+# Test Docker run
+docker run -p 3000:3000 -e AUTH_SECRET=test arenagen
+
+# Verify FFmpeg
+docker run arenagen ffmpeg -version
+
+# Verify Chromium
+docker run arenagen chromium --version
 ```
 
-## 🔍 Debugging
+## Troubleshooting
 
-### Enable verbose logging:
+### Videos not saving thumbnails
+- Check FFmpeg is installed: `ffmpeg -version`
+- Check server logs for FFmpeg errors
+- Verify video file is valid
 
-```javascript
-// In proxy-server.js
-onProxyReq: (proxyReq, req, res) => {
-  console.log('→', req.method, req.url);
-},
-```
+### Dark mode not working
+- Clear browser cache
+- Check system dark mode is enabled
+- Verify Tailwind config has `darkMode: 'media'`
 
-### Check browser console:
+### Docker build fails
+- Check Dockerfile syntax
+- Ensure all dependencies are listed
+- Verify base image is accessible
 
-The injected script logs: `🎨 Rebranding active: VideoAI Pro`
+## License
 
-## ⚖️ Legal Considerations
+MIT
 
-**This POC demonstrates techniques that likely violate:**
+## Support
 
-- ✗ HeyGen's Terms of Service
-- ✗ Copyright laws (UI/UX design)
-- ✗ Trademark laws
-- ✗ Computer Fraud and Abuse Act (depending on jurisdiction)
-
-**Legitimate alternatives:**
-- Use HeyGen's official API
-- Request white-label partnership
-- Build similar functionality from scratch
-- Use open-source alternatives
-
-## 🎓 Educational Use Cases
-
-This POC is useful for learning:
-- Reverse proxy architecture
-- HTTP request/response manipulation
-- DOM manipulation with JavaScript
-- Puppeteer web scraping
-- Express.js middleware
-- MutationObserver API
-
-## 🚫 What NOT to Do
-
-- ❌ Use in production
-- ❌ Commercialize rebranded version
-- ❌ Bypass authentication
-- ❌ Scrape user data
-- ❌ Violate rate limits
-
-## 🔐 Authentication Notes
-
-HeyGen likely requires authentication. To handle this:
-
-1. **Manual approach**: Login in a real browser, copy cookies
-2. **Puppeteer approach**: Automate login (requires credentials)
-3. **Proxy approach**: Forward authentication headers
-
-Example cookie forwarding:
-
-```javascript
-onProxyReq: (proxyReq, req, res) => {
-  if (req.headers.cookie) {
-    proxyReq.setHeader('cookie', req.headers.cookie);
-  }
-}
-```
-
-## 📚 Resources
-
-- [http-proxy-middleware docs](https://github.com/chimurai/http-proxy-middleware)
-- [Puppeteer docs](https://pptr.dev/)
-- [Express.js docs](https://expressjs.com/)
-- [MutationObserver MDN](https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver)
-
-## 🤝 Contributing
-
-This is a POC for educational purposes. Feel free to experiment and learn!
-
-## 📄 License
-
-MIT License - Educational purposes only
-
----
-
-**Remember: With great power comes great responsibility. Use this knowledge ethically.**
+For issues and questions:
+1. Check documentation in `/docs` folder
+2. Review troubleshooting guides
+3. Check server logs for errors

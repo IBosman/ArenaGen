@@ -1,8 +1,8 @@
 {
   "id": "05b343b7-e41f-43ae-8278-cd5831ac9b5e",
-  "title": "disable captions",
+  "title": "Elevate Your Business",
   "createdAt": "2025-12-08T11:02:44.491Z",
-  "updatedAt": "2025-12-08T11:26:28.123Z",
+  "updatedAt": "2025-12-15T08:11:59.869Z",
   "messages": [
     {
       "role": "user",
@@ -25,6 +25,74 @@
       "text": "Of course. Here is the updated plan with captions disabled.\n\nTopic\tNature demo video\nAudience\tGeneral audience\nMusic Theme\tCalming and inspirational\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tA female presenter in her 30s, with a friendly and engaging demeanor.\nVoice\tA warm and friendly adult female voice.\nSupplemental Footage (B-roll)\tStock media of beautiful nature scenes.\nCaptions\tDisabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
       "video": null,
       "id": "msg_420abba3"
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "id": "temp_1765785135163",
+      "isOptimistic": true
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from ArenaGen.\n\nI can help you create a video. To get started, what would you like your video to be about?",
+      "video": null,
+      "id": "msg_2f6c872f"
+    },
+    {
+      "role": "user",
+      "text": "heygen",
+      "id": "temp_1765785333400",
+      "isOptimistic": true
+    },
+    {
+      "role": "user",
+      "text": "yes",
+      "id": "temp_1765785350734",
+      "isOptimistic": true
+    },
+    {
+      "role": "agent",
+      "text": "",
+      "video": {
+        "thumbnail": "",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/8e95bf3d65e8493faec72492126a4ab5/v9d2b1648e6e3424995f77cdcead88e0c/1080x1920.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Nature%2527s%2520Serenity.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/8e95bf3d65e8493faec72492126a4ab5/v9d2b1648e6e3424995f77cdcead88e0c/1080x1920.jpeg",
+        "title": "Nature's Serenity"
+      }
+    },
+    {
+      "role": "agent",
+      "text": "Great! I will start generating your video. I will let you know once it is ready.",
+      "video": null,
+      "id": "msg_5108f5e3"
+    },
+    {
+      "role": "user",
+      "text": "Now I want you to generate a video for Business consultancy",
+      "id": "temp_1765785946579",
+      "isOptimistic": true
+    },
+    {
+      "role": "agent",
+      "text": "Hello! I'm Video Agent, a helpful AI assistant from ArenaGen. I can help you create a video about business consultancy.\n\nHere is a plan for your video:\n\nTopic\tBusiness consultancy\nAudience\tBusiness professionals and entrepreneurs\nMusic Theme\tCorporate and motivational\nVideo Length\tApproximately 15 seconds\nVideo Orientation\tportrait\nScript Plan\tThe script will be automatically generated based on the topic.\nTarget Language\tEnglish (United States)\nAvatar\tA male presenter in his 40s, in business attire.\nVoice\tA clear and confident adult male voice.\nSupplemental Footage (B-roll)\tStock media of business meetings and office environments.\nCaptions\tEnabled\n\nWould you like to proceed with this plan? Type Yes to continue with this plan.",
+      "video": null,
+      "id": "msg_582cf050"
+    },
+    {
+      "role": "agent",
+      "text": "",
+      "video": {
+        "thumbnail": "",
+        "videoUrl": "https://resource2.heygen.ai/video/transcode/b8c6e2086c37418ca1524c749fdc6927/v7c1cda4ec7584485ba5b5467efbf306d/1080x1920.mp4?response-content-disposition=attachment%3B+filename%2A%3DUTF-8%27%27Elevate%2520Your%2520Business.mp4%3B",
+        "poster": "https://resource2.heygen.ai/video/transcode/b8c6e2086c37418ca1524c749fdc6927/v7c1cda4ec7584485ba5b5467efbf306d/1080x1920.jpeg",
+        "title": "Elevate Your Business"
+      }
+    },
+    {
+      "role": "agent",
+      "text": "I've just generated the video for you. Let me know what you think! If you'd like any changes, just tell me what they are.",
+      "video": null,
+      "id": "msg_6784c459"
     }
   ],
   "userEmail": "demo@arenagen.com"

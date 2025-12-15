@@ -147,19 +147,19 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
 
       {/* Sidebar */}
       <div
-        className={`fixed top-0 left-0 h-full bg-white border-r border-gray-200 shadow-lg z-50 transform transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 left-0 h-full bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 shadow-lg z-50 transform transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         } w-80`}
       >
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-lg font-semibold text-gray-900">Chat History</h2>
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">Chat History</h2>
           <button
             onClick={onClose}
-            className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+            className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
           >
             <svg
-              className="w-5 h-5 text-gray-600"
+              className="w-5 h-5 text-gray-600 dark:text-gray-400"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -175,24 +175,24 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* Chat List */}
-        <div className="overflow-y-auto h-[calc(100vh-73px)]">
+        <div className="overflow-y-auto h-[calc(100vh-73px)] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-gray-100 dark:[&::-webkit-scrollbar-track]:bg-gray-800 [&::-webkit-scrollbar-thumb]:bg-gray-300 dark:[&::-webkit-scrollbar-thumb]:bg-gray-600 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:hover:bg-gray-400 dark:[&::-webkit-scrollbar-thumb]:hover:bg-gray-500">
           {isLoading ? (
             <div className="flex items-center justify-center p-8">
               <div className="flex items-center gap-2">
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
               </div>
             </div>
           ) : error ? (
-            <div className="p-4 text-center text-red-600 text-sm">
+            <div className="p-4 text-center text-red-600 dark:text-red-400 text-sm">
               <p>Failed to load chats</p>
               <p className="text-xs mt-1">{error}</p>
             </div>
           ) : chats.length === 0 ? (
-            <div className="p-8 text-center text-gray-500">
+            <div className="p-8 text-center text-gray-500 dark:text-gray-400">
               <svg
-                className="w-12 h-12 mx-auto mb-3 text-gray-300"
+                className="w-12 h-12 mx-auto mb-3 text-gray-300 dark:text-gray-600"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -208,30 +208,30 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
               <p className="text-xs mt-1">Start a new chat to get started</p>
             </div>
           ) : (
-            <div className="divide-y divide-gray-100">
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {chats.map((chat) => (
                 <button
                   key={chat.id}
                   onClick={() => handleChatClick(chat)}
-                  className={`w-full text-left p-4 hover:bg-gray-50 transition-colors ${
+                  className={`w-full text-left p-4 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors ${
                     currentSessionId && chat.id.includes(currentSessionId)
-                      ? 'bg-blue-50 border-l-4 border-blue-500'
+                      ? 'bg-blue-50 dark:bg-blue-900/30 border-l-4 border-blue-500'
                       : ''
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                         {chat.title || chat.name || 'Untitled Chat'}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <span className="text-xs text-gray-500">
+                        <span className="text-xs text-gray-500 dark:text-gray-400">
                           {formatDate(chat.updatedAt)}
                         </span>
                         {chat.messageCount > 0 && (
                           <>
-                            <span className="text-xs text-gray-400">•</span>
-                            <span className="text-xs text-gray-500">
+                            <span className="text-xs text-gray-400 dark:text-gray-600">•</span>
+                            <span className="text-xs text-gray-500 dark:text-gray-400">
                               {chat.messageCount} {chat.messageCount === 1 ? 'message' : 'messages'}
                             </span>
                           </>
@@ -261,11 +261,11 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
                           e.preventDefault();
                           setChatToDelete(chat);
                         }}
-                        className="p-1 rounded hover:bg-red-50 transition-colors"
+                        className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
                         title="Delete chat"
                       >
                         <svg
-                          className="w-4 h-4 text-gray-400 hover:text-red-500"
+                          className="w-4 h-4 text-gray-400 dark:text-gray-500 hover:text-red-500 dark:hover:text-red-400"
                           fill="none"
                           stroke="currentColor"
                           viewBox="0 0 24 24"
@@ -287,13 +287,13 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
         </div>
 
         {/* New Chat Button */}
-        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white border-t border-gray-200">
+        <div className="absolute bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-700">
           <button
             onClick={() => {
               navigate('/home');
               onClose();
             }}
-            className="w-full py-2.5 px-4 bg-black text-white rounded-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2 font-medium"
+            className="w-full py-2.5 px-4 bg-black dark:bg-gray-700 text-white rounded-lg hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors flex items-center justify-center gap-2 font-medium"
           >
             <svg
               className="w-5 h-5"
@@ -319,25 +319,25 @@ const ChatHistorySidebar = ({ isOpen, onClose }) => {
           onClick={() => setChatToDelete(null)}
         >
           <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete chat</h2>
-            <p className="text-sm text-gray-700 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Delete chat</h2>
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-6">
               Are you sure you want to delete{' '}
               <span className="font-medium">{chatToDelete.title || chatToDelete.name || 'this chat'}</span>?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                className="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                className="px-4 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 onClick={() => setChatToDelete(null)}
               >
                 No
               </button>
               <button
                 type="button"
-                className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+                className="px-4 py-2 text-sm rounded-md bg-red-600 dark:bg-red-700 text-white hover:bg-red-700 dark:hover:bg-red-800"
                 onClick={() => handleDeleteChat(chatToDelete)}
               >
                 Yes

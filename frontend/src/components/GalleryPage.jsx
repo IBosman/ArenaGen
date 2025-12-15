@@ -137,20 +137,20 @@ const GalleryPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       <Header />
       
       <div className="flex-1 p-4 sm:p-6 md:p-8">
         <div className="max-w-7xl mx-auto">
           <div className="mb-6 sm:mb-8">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">My Videos</h1>
-            <p className="text-gray-600 mt-1 sm:mt-2">
+            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 dark:text-gray-100">My Videos</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1 sm:mt-2">
               {loading ? 'Loading...' : `${videos.length} video${videos.length !== 1 ? 's' : ''}`}
             </p>
           </div>
 
           {error ? (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 mb-6">
+            <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 mb-6">
               <div className="flex">
                 <div className="flex-shrink-0">
                   <svg className="h-5 w-5 text-red-500" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
@@ -158,11 +158,11 @@ const GalleryPage = () => {
                   </svg>
                 </div>
                 <div className="ml-3">
-                  <p className="text-sm text-red-700">
+                  <p className="text-sm text-red-700 dark:text-red-400">
                     {error}
                     <button 
                       onClick={fetchVideos}
-                      className="ml-2 text-sm font-medium text-red-700 hover:text-red-600 underline"
+                      className="ml-2 text-sm font-medium text-red-700 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 underline"
                     >
                       Try again
                     </button>
@@ -173,17 +173,17 @@ const GalleryPage = () => {
           ) : loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-300 border-t-blue-500 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading your videos...</p>
+                <div className="animate-spin rounded-full h-12 w-12 border-4 border-gray-300 dark:border-gray-700 border-t-blue-500 mx-auto mb-4"></div>
+                <p className="text-gray-600 dark:text-gray-400">Loading your videos...</p>
               </div>
             </div>
           ) : videos.length === 0 ? (
-            <div className="text-center py-12 bg-white rounded-lg shadow-sm border border-gray-200">
-              <svg className="mx-auto h-16 w-16 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="text-center py-12 bg-white dark:bg-gray-800 rounded-lg shadow-sm border border-gray-200 dark:border-gray-700">
+              <svg className="mx-auto h-16 w-16 text-gray-400 dark:text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
               </svg>
-              <h3 className="mt-2 text-lg font-medium text-gray-900">No videos yet</h3>
-              <p className="mt-1 text-gray-500">Create your first video to get started!</p>
+              <h3 className="mt-2 text-lg font-medium text-gray-900 dark:text-gray-100">No videos yet</h3>
+              <p className="mt-1 text-gray-500 dark:text-gray-400">Create your first video to get started!</p>
               <div className="mt-6">
                 <a
                   href="/generate"
@@ -198,12 +198,12 @@ const GalleryPage = () => {
               {videos.map((video, index) => (
                 <div
                   key={video.id || index}
-                  className="group bg-white rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow border border-gray-200"
+                  className="group bg-white dark:bg-gray-800 rounded-lg overflow-hidden shadow-sm hover:shadow-md transition-shadow border border-gray-200 dark:border-gray-700"
                 >
-                  <div className="relative aspect-video bg-gray-100">
+                  <div className="relative aspect-video bg-gray-100 dark:bg-gray-700">
                     {/* Fallback placeholder always present */}
                     <div className="absolute inset-0 w-full h-full bg-gradient-to-br from-blue-100 to-blue-200 flex items-center justify-center">
-                      <svg className="h-12 w-12 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <svg className="h-12 w-12 text-blue-400 dark:text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z" />
                       </svg>
                     </div>
@@ -260,14 +260,14 @@ const GalleryPage = () => {
                     )}
                   </div>
                   <div className="p-3 sm:p-4">
-                    <h3 className="font-medium text-gray-900 text-sm sm:text-base truncate" title={video.title}>
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100 text-sm sm:text-base truncate" title={video.title}>
                       {video.title}
                     </h3>
                     <div className="flex justify-between items-center mt-1">
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
                         {new Date(video.createdAt).toLocaleDateString()}
                       </p>
-                      <span className="text-xs text-gray-500">
+                      <span className="text-xs text-gray-500 dark:text-gray-400">
                         {video.size ? formatFileSize(video.size) : ''}
                       </span>
                     </div>
@@ -385,24 +385,24 @@ const GalleryPage = () => {
       {videoToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setVideoToDelete(null)}>
           <div
-            className="bg-white rounded-lg shadow-xl max-w-md w-full p-6"
+            className="bg-white dark:bg-gray-800 rounded-lg shadow-xl max-w-md w-full p-6"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-lg font-semibold text-gray-900 mb-2">Delete video</h2>
-            <p className="text-sm text-gray-700 mb-6">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">Delete video</h2>
+            <p className="text-sm text-gray-700 dark:text-gray-300 mb-6">
               Are you sure you want to delete <span className="font-medium">{videoToDelete.title}</span>?
             </p>
             <div className="flex justify-end gap-3">
               <button
                 type="button"
-                className="px-4 py-2 text-sm rounded-md border border-gray-300 text-gray-700 hover:bg-gray-100"
+                className="px-4 py-2 text-sm rounded-md border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                 onClick={() => setVideoToDelete(null)}
               >
                 No
               </button>
               <button
                 type="button"
-                className="px-4 py-2 text-sm rounded-md bg-red-600 text-white hover:bg-red-700"
+                className="px-4 py-2 text-sm rounded-md bg-red-600 dark:bg-red-700 text-white hover:bg-red-700 dark:hover:bg-red-800"
                 onClick={() => handleDeleteVideo(videoToDelete)}
               >
                 Yes

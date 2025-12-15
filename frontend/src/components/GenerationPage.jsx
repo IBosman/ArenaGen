@@ -670,8 +670,22 @@ const GenerationPage = () => {
 
         // Simple rule: If we're loading and incoming messages have a NEW agent message, clear loading
         // Check if any agent message is newer than when we started loading
+        // Helper to detect HeyGen preloader messages
+        const isHeyGenPreloader = (text) => {
+          if (!text) return false;
+          const normalized = text.toLowerCase().trim();
+          // HeyGen shows "Thinking..." or "Reasoning" as preloader text
+          return normalized === 'thinking...' ||
+                 normalized === 'thinking' ||
+                 normalized === 'reasoning' ||
+                 normalized.includes('video agent is working') ||
+                 normalized.includes('working on your video') ||
+                 normalized.includes('generating your video') ||
+                 normalized.includes('processing your request');
+        };
+        
         const incomingAgentMessages = messagesArray.filter(m => 
-          m.role === 'agent' && m.text && m.text.length > 0
+          m.role === 'agent' && m.text && m.text.length > 0 && !isHeyGenPreloader(m.text)
         );
         
         const existingAgentTexts = previousMessagesRef.current
@@ -1936,7 +1950,7 @@ const GenerationPage = () => {
           headers: {
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ prompt: userMessage })
+          body: JSON.stringify({ prompt: messageToSend })  // Use messageToSend which includes chat history context
         });
 
         const data = await response.json();
@@ -1944,13 +1958,15 @@ const GenerationPage = () => {
         if (data.success) {
           console.log('Prompt submitted successfully');
           
-          // Clear loading timeout since we got a response
+          // Clear loading timeout since we got a response - but DON'T clear isLoading yet
+          // We need to wait for the agent response via get_messages polling
           if (loadingTimeoutRef.current) {
             clearTimeout(loadingTimeoutRef.current);
             loadingTimeoutRef.current = null;
           }
-          setIsLoading(false);
-          isLoadingRef.current = false;
+          // DON'T clear isLoading here - wait for agent response
+          // setIsLoading(false);
+          // isLoadingRef.current = false;
           
           // Save session info
           if (data.sessionPath) {
@@ -1986,6 +2002,13 @@ const GenerationPage = () => {
           }
           
           // Messages will be updated via WebSocket
+          // Set a new safety timeout for agent response (60 seconds)
+          loadingTimeoutRef.current = setTimeout(() => {
+            console.warn('⏰ Agent response timeout - clearing preloader after 60 seconds');
+            setIsLoading(false);
+            isLoadingRef.current = false;
+            setIsGeneratingLocal(false);
+          }, 60000);
         } else {
           console.error('Failed to submit prompt:', data.error);
           
@@ -2162,7 +2185,7 @@ const GenerationPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex flex-col">
       {/* Chat History Sidebar */}
       <ChatHistorySidebar 
         isOpen={sidebarOpen} 
@@ -2172,11 +2195,11 @@ const GenerationPage = () => {
       {/* Menu Button */}
       <button
         onClick={() => setSidebarOpen(true)}
-        className="fixed top-4 left-4 z-30 p-2 bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200"
+        className="fixed top-4 left-4 z-30 p-2 bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow border border-gray-200 dark:border-gray-700"
         title="Chat History"
       >
         <svg
-          className="w-6 h-6 text-gray-700"
+          className="w-6 h-6 text-gray-700 dark:text-gray-300"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -2205,7 +2228,7 @@ const GenerationPage = () => {
                   className={`max-w-[80%] rounded-2xl px-5 py-3 ${
                     message.role === 'user'
                       ? 'bg-black text-white rounded-br-none'
-                      : 'bg-white text-gray-900 shadow-sm border border-gray-200 rounded-bl-none'
+                      : 'bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm border border-gray-200 dark:border-gray-700 rounded-bl-none'
                   }`}
                 >
                   {message.text && (
@@ -2232,7 +2255,7 @@ const GenerationPage = () => {
                                 container.innerHTML = `<a href="${url}" target="_blank" rel="noopener noreferrer" class="text-blue-600 underline break-all">Open image</a>`;
                               }
                             }}
-                            className="w-[150px] h-[150px] rounded-lg object-cover border border-gray-300"
+                            className="w-[150px] h-[150px] rounded-lg object-cover border border-gray-300 dark:border-gray-600"
                           />
                         </div>
                       ))}
@@ -2277,15 +2300,15 @@ const GenerationPage = () => {
                                   />
                                 </div>
                                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-30 transition-all flex items-center justify-center">
-                                  <div className="w-12 h-12 rounded-full bg-white bg-opacity-0 group-hover:bg-opacity-100 transition-all flex items-center justify-center">
-                                    <svg className="w-6 h-6 text-gray-900 ml-1" fill="currentColor" viewBox="0 0 24 24">
+                                  <div className="w-12 h-12 rounded-full bg-white dark:bg-gray-800 bg-opacity-0 group-hover:bg-opacity-100 transition-all flex items-center justify-center">
+                                    <svg className="w-6 h-6 text-gray-900 dark:text-gray-100 ml-1" fill="currentColor" viewBox="0 0 24 24">
                                       <path d="M8 5v14l11-7z" />
                                     </svg>
                                   </div>
                                 </div>
                               </div>
-                              <div className="p-3 bg-white">
-                                <p className="text-sm font-medium text-gray-900 truncate">
+                              <div className="p-3 bg-white dark:bg-gray-800">
+                                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
                                   {message.video.title || 'Your video is ready!'}
                                 </p>
                               </div>
@@ -2318,11 +2341,11 @@ const GenerationPage = () => {
           {/* Standard preloader - shows when loading but no video generation in progress */}
           {isLoading && !messages.some(m => m.video) && !isGeneratingLocal && !generationProgress?.isGenerating && (
             <div className="flex justify-start">
-              <div className="bg-white text-gray-900 shadow-sm border border-gray-200 rounded-2xl rounded-bl-none px-5 py-3">
+              <div className="bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 shadow-sm border border-gray-200 dark:border-gray-700 rounded-2xl rounded-bl-none px-5 py-3">
                 <div className="flex items-center gap-2">
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                  <div className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-gray-400 dark:bg-gray-600 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
                 </div>
               </div>
             </div>
@@ -2345,7 +2368,7 @@ const GenerationPage = () => {
 
       {/* Bottom Input - Fixed */}
       <div className="fixed bottom-8 left-1/2 transform -translate-x-1/2 w-full max-w-2xl px-4">
-        <div className="bg-white border border-gray-300 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-200">
+        <div className="bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-2xl shadow-lg hover:shadow-xl transition-shadow duration-200">
           <div className="p-4 relative">
             <input
               type="text"
@@ -2353,7 +2376,7 @@ const GenerationPage = () => {
               onChange={(e) => setInputValue(e.target.value)}
               onKeyDown={handleKeyDown}
               disabled={isLoading}
-              className="w-full pr-10 resize-none border-none outline-none text-gray-900 placeholder-gray-400 text-sm bg-transparent"
+              className="w-full pr-10 resize-none border-none outline-none text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 text-sm bg-transparent"
               placeholder="Share a topic, idea, or instructions with Video Agent to produce a full trailer video"
             />
             
@@ -2361,7 +2384,7 @@ const GenerationPage = () => {
             <button
               onClick={handleSendMessage}
               disabled={isLoading || (!inputValue.trim() && attachedFiles.length === 0)}
-              className="absolute right-6 top-1/2 transform -translate-y-1/2 w-8 h-8 rounded-full bg-black text-white hover:bg-gray-800 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
+              className="absolute right-6 top-1/2 transform -translate-y-1/2 w-8 h-8 rounded-full bg-black dark:bg-gray-700 text-white hover:bg-gray-800 dark:hover:bg-gray-600 transition-colors flex items-center justify-center disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M12 19V5" />
@@ -2513,7 +2536,7 @@ const GenerationPage = () => {
                 setErrorMessage(null);
                 // Optionally trigger a retry here
               }}
-              className="px-4 py-2 text-sm font-semibold text-gray-900 bg-white border border-gray-300 rounded-md hover:bg-gray-50 active:bg-gray-100 transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-gray-900 dark:text-gray-100 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 active:bg-gray-100 dark:active:bg-gray-600 transition-colors"
             >
               Try again
             </button>

@@ -2797,7 +2797,7 @@ async function handleWebSocketMessage(ws, data, session = null) {
               fetchedMessages = await page.evaluate(() => {
                 // Get all chat rows AND video cards in order (exclude hidden placeholders)
                 const allElements = Array.from(
-                  document.querySelectorAll('div.tw-flex.tw-justify-end, div.tw-flex.tw-justify-start, div.tw-flex.tw-flex-col.tw-items-stretch.tw-rounded-2xl.tw-border.tw-border-line.tw-bg-fill-general.tw-cursor-pointer')
+                  document.querySelectorAll('div.tw-flex.tw-self-end, div.tw-flex.tw-self-start, div.tw-flex.tw-flex-col.tw-items-stretch.tw-rounded-2xl.tw-border.tw-border-line.tw-bg-fill-general.tw-cursor-pointer')
                 ).filter(el => {
                   // Skip hidden elements
                   if (el.classList.contains('tw-hidden')) return false;
@@ -2900,7 +2900,7 @@ async function handleWebSocketMessage(ws, data, session = null) {
                   }
                   
                   // Regular chat row logic
-                  const isUser = row.classList.contains('tw-justify-end');
+                  const isUser = row.classList.contains('tw-self-end');
 
                   if (isUser) {
                     const userBubble = row.querySelector('.tw-bg-fill-block');
